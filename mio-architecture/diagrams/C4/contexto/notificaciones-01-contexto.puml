@@ -1,7 +1,7 @@
 @startuml notificaciones-01-contexto
 
 !define RELATIVE_INCLUDE "."
-!include ../../../../template-architecture/binaries/C4_Context.puml
+!include ../../../../mio-architecture/binariess/C4_Context.puml
 
 LAYOUT_LEFT_RIGHT()
 
