@@ -1,26 +1,22 @@
 @startuml notificaciones-02-contenedores
-' ============================================================
-' C4 - Nivel 2: Diagrama de Contenedores
-' Sistema: P07 - Microservicio de Notificaciones
-' ============================================================
 !define RELATIVE_INCLUDE "."
 !include ../../../../template-architecture/binaries/C4_Container.puml
 
 LAYOUT_LEFT_RIGHT()
 
-title Diagrama de Contenedores (C2) - Microservicio P07 Notificaciones
+title Diagrama de Contenedores (C2) - Microservicio Notificaciones
 
-System_Ext(emisores, "Servicios internos emisores", "Consumen la API REST de notificaciones y plantillas.")
+Person(emisores, "Emisores", "Consumen la API REST de notificaciones y plantillas.")
 System_Ext(proveedor, "Proveedor de email y SMS", "Entrega mensajes por email y SMS.")
 
 System_Boundary(p07, "Microservicio P07 Notificaciones") {
     Container(api, "API REST", "Node.js 22 / ultimate-express / Zod", "Expone /api/v1 para crear y consultar notificaciones, reintentar fallos y administrar plantillas.")
     Container(worker, "Worker de envíos", "Node.js 22", "Consume trabajos pendientes, renderiza plantillas, controla el throughput, realiza envíos y programa reintentos con backoff exponencial.")
-    ContainerDb(db, "Base de datos", "PostgreSQL / @tigo/postgres-connector", "Persiste plantillas, notificaciones, estados e intentos de entrega.")
-    ContainerDb(redis, "Cola y coordinación", "Redis / @tigo/redis-connector", "Mantiene la cola, trabajos diferidos, claves de idempotencia y contadores de throughput.")
+    ContainerDb(db, "Base de datos", "PostgreSQL", "Persiste plantillas, notificaciones, estados e intentos de entrega.")
+    ContainerDb(redis, "Cola y coordinación", "Redis", "Mantiene la cola, trabajos diferidos, claves de idempotencia y contadores de throughput.")
 }
 
-Rel(emisores, api, "RF-7.1 a RF-7.5: envía, consulta, reintenta, lista y gestiona plantillas", "HTTPS / REST / JSON")
+Rel(emisores, api, "Envía, consulta, reintenta, lista y gestiona plantillas", "HTTPS / REST / JSON")
 Rel(api, db, "Lee y persiste plantillas, notificaciones e intentos", "SQL")
 Rel(api, redis, "Encola envíos y reintentos; verifica idempotencia", "RESP")
 

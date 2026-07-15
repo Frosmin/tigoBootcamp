@@ -1,17 +1,16 @@
 @startuml notificaciones-01-contexto
-' ============================================================
-' C4 - Nivel 1: Diagrama de Contexto
-' Sistema: P07 - Microservicio de Notificaciones
-' ============================================================
+
 !define RELATIVE_INCLUDE "."
 !include ../../../../template-architecture/binaries/C4_Context.puml
 
 LAYOUT_LEFT_RIGHT()
 
-title Diagrama de Contexto (C1) - Microservicio P07 Notificaciones
+title Diagrama de Contexto (C1) - Microservicio Notificaciones
 
-System_Ext(emisores, "Servicios internos emisores", "Sistemas internos que gestionan plantillas, solicitan notificaciones y consultan su estado e historial.")
+Person(emisores,"Emisores", "Sistemas internos que gestionan plantillas, solicitan notificaciones y consultan su estado e historial.")
 
+
+' Person(Administrador, "Administrador", "Gestiona las plantillas")
 System(notificaciones, "Microservicio P07 Notificaciones", "API backend que administra plantillas y entrega notificaciones por email o SMS con estados.")
 
 System_Ext(proveedor, "Proveedor de email y SMS", "Servicio externo que entrega correos electrónicos y mensajes SMS mediante Tigo Library.")
@@ -20,5 +19,8 @@ Rel(emisores, notificaciones, "Gestiona plantillas, solicita envíos, consulta e
 Rel(notificaciones, proveedor, "Solicita la entrega de email o SMS", "Tigo Library / HTTPS")
 Rel(proveedor, notificaciones, "Devuelve el resultado de entrega", "Respuesta API")
 
+
+
+' Rel(Administrador, notificaciones, "Recibe confirmaciones de reservas y pagos", "Email / SMS")
 SHOW_LEGEND()
 @enduml

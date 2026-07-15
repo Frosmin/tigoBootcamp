@@ -1,16 +1,13 @@
 @startuml notificaciones-03-componentes
-' ============================================================
-' C4 - Nivel 3: Diagrama de Componentes
-' Contenedores: API REST y Worker del microservicio P07
-' ============================================================
+
 !define RELATIVE_INCLUDE "."
 !include ../../../../template-architecture/binaries/C4_Component.puml
 
 LAYOUT_LEFT_RIGHT()
 
-title Diagrama de Componentes (C3) - Microservicio P07 Notificaciones
+title Diagrama de Componentes (C3) - Microservicio Notificaciones
 
-System_Ext(emisores, "Servicios internos emisores", "Clientes internos de la API.")
+Person(emisores, "Emisores", "Clientes internos de la API.")
 System_Ext(proveedor, "Proveedor de email y SMS", "Entrega los mensajes solicitados.")
 ContainerDb(db, "PostgreSQL", "@tigo/postgres-connector", "Plantillas, notificaciones e intentos.")
 ContainerDb(redis, "Redis", "@tigo/redis-connector", "Cola, trabajos diferidos, idempotencia y throughput.")
