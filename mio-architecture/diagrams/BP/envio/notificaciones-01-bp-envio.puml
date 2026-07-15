@@ -1,0 +1,124 @@
+@startuml notificaciones-01-bp-envio
+
+title Envío de Notificación
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor white
+    BorderColor #1676D2
+    FontColor #000000
+    DiamondBackgroundColor #FFF2CC
+    DiamondBorderColor #C99A00
+    StartColor #222222
+    EndColor #222222
+    BarColor #1676D2
+}
+skinparam swimlane {
+    BorderColor #8AB4E8
+    TitleBackgroundColor #E8F1FB
+    TitleFontColor #003B70
+}
+
+|Servicio interno emisor|
+start
+:Solicitar envío\nPOST /api/v1/notifications;
+
+note right
+  canal: EMAIL o SMS
+  destinatario
+  plantillaId
+  variables
+  idempotencyKey
+end note
+
+|API REST|
+:Validar autenticación, autorización\ny formato con Zod;
+
+if (¿Solicitud válida?) then (Sí)
+    :Buscar plantilla en PostgreSQL;
+    if (¿Plantilla existente?) then (Sí)
+        :Validar variables requeridas;
+        if (¿Variables completas?) then (Sí)
+            :Consultar y reservar\nclave de idempotencia en Redis;
+            if (¿Solicitud duplicada?) then (Sí)
+                :Consultar notificación existente\nen PostgreSQL;
+                |Servicio interno emisor|
+                :Recibir id y estado existente\nsin generar otro envío;
+                stop
+            else (No)
+                |API REST|
+                :Persistir notificación en PostgreSQL\nestado = ENCOLADA, intentos = 0;
+                :Publicar id de notificación\nen la cola Redis;
+                |Servicio interno emisor|
+                :Recibir HTTP 202 Accepted\ncon id y estado ENCOLADA;
+            endif
+        else (No)
+            :Rechazar por variables faltantes;
+            |Servicio interno emisor|
+            :Recibir HTTP 400;
+            stop
+        endif
+    else (No)
+        :Rechazar por plantilla inexistente;
+        |Servicio interno emisor|
+        :Recibir HTTP 404;
+        stop
+    endif
+else (No)
+    :Rechazar solicitud inválida\no no autorizada;
+    |Servicio interno emisor|
+    :Recibir HTTP 400, 401 o 403;
+    stop
+endif
+
+|Worker de envíos|
+:Consumir trabajo de Redis;
+:Consultar notificación y plantilla\nen PostgreSQL;
+
+if (¿Notificación ya ENVIADA?) then (Sí)
+    :Descartar trabajo duplicado;
+    stop
+else (No)
+    :Solicitar permiso al limitador\nde throughput en Redis;
+    if (¿Hay capacidad de envío?) then (Sí)
+        :Renderizar plantilla;
+        :Invocar conector email/SMS\nde Tigo Library;
+        |Proveedor email/SMS|
+        :Procesar entrega;
+        :Devolver éxito o fallo;
+        |Worker de envíos|
+        if (¿Envío exitoso?) then (Sí)
+            :Persistir intento EXITOSO;
+            :Actualizar notificación\nestado = ENVIADA;
+            stop
+        else (No)
+            :Persistir intento FALLIDO\ny causa del error;
+            if (¿Error reintentable y\nquedan intentos?) then (Sí)
+                :Calcular backoff exponencial;
+                :Programar trabajo diferido\nen Redis;
+                note right
+                  El worker no espera ni se bloquea.
+                  Otro ciclo consumirá el trabajo
+                  cuando venza el backoff.
+                end note
+                stop
+            else (No)
+                :Actualizar notificación\nestado = FALLIDA;
+                stop
+            endif
+        endif
+    else (No)
+        :Reprogramar trabajo en Redis\nsin consumir un intento;
+        stop
+    endif
+endif
+
+legend right
+|= RF |= Cobertura |
+| RF-7.1 | Crear y procesar una notificación |
+| Estado inicial | ENCOLADA |
+| Resultado | ENVIADA o FALLIDA |
+endlegend
+
+@enduml

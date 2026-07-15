@@ -1,0 +1,91 @@
+@startuml notificaciones-04-bp-reintento
+
+title Proceso de Negocio - RF-7.4 Reintento Manual de Notificación
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor white
+    BorderColor #1676D2
+    FontColor #000000
+    DiamondBackgroundColor #FFF2CC
+    DiamondBorderColor #C99A00
+    StartColor #222222
+    EndColor #222222
+    BarColor #1676D2
+}
+skinparam swimlane {
+    BorderColor #8AB4E8
+    TitleBackgroundColor #E8F1FB
+    TitleFontColor #003B70
+}
+
+|Servicio interno emisor|
+start
+:Solicitar reintento\nPOST /api/v1/notifications/{id}/retry;
+
+|API REST|
+:Validar autenticación, autorización\ny parámetro id;
+
+if (¿Solicitud válida?) then (Sí)
+    :Buscar notificación e intentos\nen PostgreSQL;
+    if (¿Notificación existente?) then (Sí)
+        if (¿Estado actual?) then (FALLIDA)
+            :Evaluar máximo configurable\nde intentos;
+            if (¿Quedan intentos?) then (Sí)
+                :Reservar control de reintento\nen Redis para evitar duplicados;
+                if (¿Ya existe un reintento activo?) then (Sí)
+                    |Servicio interno emisor|
+                    :Recibir HTTP 409;
+                    stop
+                else (No)
+                    |API REST|
+                    :Calcular demora con\nbackoff exponencial;
+                    :Actualizar notificación\nestado = ENCOLADA;
+                    :Publicar trabajo diferido\nen Redis;
+                    note right
+                      El worker consumirá el trabajo y
+                      continuará RF-7.1 aplicando throughput,
+                      idempotencia y Tigo Library.
+                    end note
+                    |Servicio interno emisor|
+                    :Recibir HTTP 202 Accepted\ncon id y estado ENCOLADA;
+                    stop
+                endif
+            else (No)
+                :Rechazar por máximo\nde intentos alcanzado;
+                |Servicio interno emisor|
+                :Recibir HTTP 409;
+                stop
+            endif
+        elseif (¿Estado actual?) then (ENVIADA)
+            :Bloquear reenvío de una\nnotificación entregada;
+            |Servicio interno emisor|
+            :Recibir HTTP 409;
+            stop
+        else (ENCOLADA)
+            :Rechazar porque existe\nun envío pendiente;
+            |Servicio interno emisor|
+            :Recibir HTTP 409;
+            stop
+        endif
+    else (No)
+        :Preparar error NOTIFICATION_NOT_FOUND;
+        |Servicio interno emisor|
+        :Recibir HTTP 404;
+        stop
+    endif
+else (No)
+    |Servicio interno emisor|
+    :Recibir HTTP 400, 401 o 403;
+    stop
+endif
+
+legend right
+|= RF-7.4 |= Regla |
+| Estado permitido | FALLIDA |
+| Estados rechazados | ENVIADA, ENCOLADA |
+| Límite | Máximo configurable de intentos |
+endlegend
+
+@enduml

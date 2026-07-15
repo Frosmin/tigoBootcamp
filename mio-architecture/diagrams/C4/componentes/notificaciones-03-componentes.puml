@@ -9,8 +9,8 @@ title Diagrama de Componentes (C3) - Microservicio Notificaciones
 
 Person(emisores, "Emisores", "Clientes internos de la API.")
 System_Ext(proveedor, "Proveedor de email y SMS", "Entrega los mensajes solicitados.")
-ContainerDb(db, "PostgreSQL", "@tigo/postgres-connector", "Plantillas, notificaciones e intentos.")
-ContainerDb(redis, "Redis", "@tigo/redis-connector", "Cola, trabajos diferidos, idempotencia y throughput.")
+ContainerDb(db, "PostgreSQL", "postgres", "Plantillas, notificaciones e intentos.")
+ContainerDb(redis, "Redis", "redis", "Cola, trabajos diferidos, idempotencia y throughput.")
 
 Container_Boundary(api, "API REST - Node.js / ultimate-express") {
     Component(routes, "Rutas y controladores", "ultimate-express", "Expone los endpoints /api/v1 de notificaciones y plantillas y genera respuestas estandarizadas.")
@@ -31,7 +31,7 @@ Container_Boundary(worker, "Worker de envíos - Node.js") {
     Component(tigoConnector, "Conector de email/SMS", "Tigo Library", "Adapta los canales EMAIL y SMS al proveedor externo.")
 }
 
-Rel(emisores, validation, "RF-7.1 a RF-7.5", "HTTPS / REST / JSON")
+Rel(emisores, validation, "HTTPS / REST / JSON")
 Rel(validation, routes, "Entrega solicitudes válidas")
 Rel(routes, notificationService, "Crear, consultar, listar y reintentar")
 Rel(routes, templateService, "Crear, modificar y eliminar")
