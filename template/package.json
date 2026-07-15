@@ -1,0 +1,38 @@
+{
+  "name": "tigo.micro.template",
+  "version": "1.0.0",
+  "description": "Template base para microservicios Node.js",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run test/unit-test/",
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "coverage": "vitest run --coverage test/unit-test/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.tigo.net.bo/channel/tigo.micro.template.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tigo/error-code": "^1.0.20",
+    "@tigo/kafka-connector": "^2.1.8",
+    "@tigo/logger": "^1.0.1",
+    "@tigo/postgres-connector": "^1.1.0",
+    "@tigo/redis-connector": "^1.0.35",
+    "body-parser": "^2.2.0",
+    "dotenv": "^17.2.3",
+    "express-prom-bundle": "^8.0.0",
+    "helmet": "^8.1.0",
+    "luxon": "^3.7.2",
+    "ultimate-express": "2.0.9",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.7",
+    "node-mocks-http": "^1.17.2",
+    "vitest": "^4.0.7"
+  }
+}

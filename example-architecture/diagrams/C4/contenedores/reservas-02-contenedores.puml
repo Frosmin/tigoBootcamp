@@ -1,0 +1,56 @@
+@startuml reservas-02-contenedores
+' ============================================================
+' C4 - Nivel 2: Diagrama de Contenedores
+' Sistema: Reservas de Vuelos y Hoteles (Backend / API)
+' ============================================================
+' Usa las librerias C4 locales (binaries/) en lugar de descargarlas de internet
+!define RELATIVE_INCLUDE "."
+!include ../../../binaries/C4_Container.puml
+
+title Diagrama de Contenedores (C2) - Sistema de Reservas de Vuelos y Hoteles
+
+Person(viajero, "Viajero", "Reserva vuelos y hoteles.")
+Person(agente, "Agente de Soporte", "Gestiona reservas.")
+
+System_Ext(idp, "Proveedor de Identidad", "OAuth2 / OIDC")
+System_Ext(gds, "GDS de Vuelos", "Amadeus / Sabre")
+System_Ext(hoteles, "Proveedor de Hoteles", "Channel manager")
+System_Ext(pagos, "Pasarela de Pagos", "Cobros y reembolsos")
+System_Ext(notif, "Servicio de Notificaciones", "Email / SMS")
+
+System_Boundary(reservas, "Sistema de Reservas") {
+    Container(api, "API REST", "Node.js / ultimate-express (template)", "Punto de entrada. Autentica, valida y expone endpoints de búsqueda, reservas y pagos.")
+    Container(busqueda, "Servicio de Búsqueda", "Node.js", "Agrega disponibilidad y tarifas de vuelos y hoteles; normaliza resultados.")
+    Container(reserva, "Servicio de Reservas", "Node.js", "Orquesta bloqueo temporal, confirmación y ciclo de vida de la reserva.")
+    Container(pago, "Orquestador de Pagos", "Node.js", "Coordina cobro, reembolso y estados de pago.")
+    ContainerDb(db, "Base de Datos", "PostgreSQL", "Reservas, pasajeros/huéspedes, pagos y auditoría.")
+    ContainerDb(cache, "Cache", "Redis", "Resultados de disponibilidad y bloqueos temporales (holds con TTL).")
+    ContainerQueue(broker, "Bus de Eventos", "Kafka / RabbitMQ", "Eventos de reserva confirmada, cancelada y pago procesado.")
+}
+
+Rel(viajero, api, "Consume la API", "HTTPS/JSON")
+Rel(agente, api, "Consume la API", "HTTPS/JSON")
+
+Rel(api, idp, "Valida tokens", "OIDC")
+Rel(api, busqueda, "Solicita búsquedas", "JSON")
+Rel(api, reserva, "Crea y gestiona reservas", "JSON")
+Rel(api, pago, "Inicia cobros/reembolsos", "JSON")
+
+Rel(busqueda, gds, "Consulta vuelos", "HTTPS")
+Rel(busqueda, hoteles, "Consulta hoteles", "HTTPS")
+Rel(busqueda, cache, "Lee/escribe disponibilidad", "RESP")
+
+Rel(reserva, gds, "Confirma vuelo", "HTTPS")
+Rel(reserva, hoteles, "Confirma hotel", "HTTPS")
+Rel(reserva, cache, "Gestiona bloqueos temporales", "RESP")
+Rel(reserva, db, "Persiste reservas", "pg (node-postgres)")
+Rel(reserva, broker, "Publica eventos de reserva", "AMQP/Kafka")
+
+Rel(pago, pagos, "Procesa cobro/reembolso", "HTTPS")
+Rel(pago, db, "Persiste estado de pago", "pg (node-postgres)")
+Rel(pago, broker, "Publica eventos de pago", "AMQP/Kafka")
+
+Rel(broker, notif, "Dispara notificaciones", "eventos")
+
+SHOW_LEGEND()
+@enduml

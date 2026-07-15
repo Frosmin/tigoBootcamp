@@ -1,0 +1,203 @@
+@startuml reservas-04-clases
+' ============================================================
+' C4 - Nivel 4: Codigo (Diagrama de Clases)
+' Backend de Reservas de Vuelos y Hoteles (Node.js / ultimate-express)
+' ============================================================
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    ArrowColor #1168BD
+    FontColor #1A1A1A
+    AttributeFontColor #1A1A1A
+    StereotypeFontColor #003865
+}
+skinparam package {
+    BackgroundColor #F4F8FD
+    BorderColor #9BB7D4
+    FontColor #003865
+}
+skinparam enum {
+    BackgroundColor #FFF7E6
+    BorderColor #E0A800
+    FontColor #1A1A1A
+}
+
+title Diagrama de Clases (C4 - Codigo) - Backend de Reservas
+
+' ============================ DOMINIO ============================
+package "Dominio" {
+    enum EstadoReserva {
+        PENDIENTE
+        CONFIRMADA
+        CANCELADA
+        EXPIRADA
+    }
+    enum EstadoPago {
+        PENDIENTE
+        APROBADO
+        RECHAZADO
+        REEMBOLSADO
+    }
+    enum TipoOferta {
+        VUELO
+        HOTEL
+    }
+    enum MedioPago {
+        TARJETA
+        QR
+        WALLET
+    }
+
+    class Money {
+        +monto: number
+        +moneda: string
+    }
+
+    class Oferta {
+        +ofertaId: string
+        +tipo: TipoOferta
+        +precio: Money
+        +validoHasta: Date
+        +estaVigente(): boolean
+    }
+
+    class Pasajero {
+        +nombre: string
+        +documento: string
+        +tipo: string
+    }
+
+    class Reserva {
+        +id: string
+        +estado: EstadoReserva
+        +monto: Money
+        +localizador?: string
+        +holdExpiraEn: Date
+        +creadaEn: Date
+        +confirmar(localizador: string): void
+        +cancelar(motivo: string): void
+        +expirar(): void
+    }
+
+    class Pago {
+        +id: string
+        +reservaId: string
+        +estado: EstadoPago
+        +monto: Money
+        +idempotencyKey: string
+        +transaccionId?: string
+        +aprobar(txId: string): void
+        +rechazar(motivo: string): void
+        +reembolsar(): void
+    }
+}
+
+Reserva "1" *-- "1..*" Pasajero
+Reserva "1" --> "1" Oferta
+Reserva --> EstadoReserva
+Pago "1" --> "1" Reserva
+Pago --> EstadoPago
+Oferta --> TipoOferta
+
+' ============================ API ============================
+package "API (ultimate-express)" {
+    class BusquedaRouter {
+        +GET /search(req, res): void
+    }
+    class ReservaRouter {
+        +POST /bookings(req, res): void
+        +GET /bookings/:id(req, res): void
+        +DELETE /bookings/:id(req, res): void
+    }
+    class PagoRouter {
+        +POST /bookings/:id/pay(req, res): void
+        +GET /payments/:id(req, res): void
+    }
+    class SecurityMiddleware {
+        +handle(req, res, next): void
+    }
+}
+
+' ============================ APLICACION ============================
+package "Aplicacion" {
+    class BusquedaService {
+        +buscar(criterios): Oferta[]
+    }
+    class ReservaService {
+        +crearReserva(oferta, pasajeros): Reserva
+        +confirmarPorPago(evento): void
+        +cancelar(reservaId): void
+    }
+    class PagoService {
+        +procesarPago(reservaId, monto, key): Pago
+        +reembolsar(reservaId): void
+    }
+}
+
+BusquedaRouter --> BusquedaService
+ReservaRouter --> ReservaService
+PagoRouter --> PagoService
+
+' ============================ PERSISTENCIA ============================
+package "Persistencia (pg)" {
+    interface ReservaRepository {
+        +findById(id): Reserva
+        +save(reserva): Reserva
+        +updateEstado(id, estado): void
+    }
+    interface PagoRepository {
+        +findByIdempotencyKey(key): Pago
+        +save(pago): Pago
+        +updateEstado(id, estado): void
+    }
+}
+
+' ============================ CONECTORES ============================
+package "Conectores" {
+    interface GdsConnector {
+        +buscarVuelos(criterios): Oferta[]
+        +confirmarVuelo(reserva): string
+    }
+    interface HotelConnector {
+        +buscarHoteles(criterios): Oferta[]
+        +confirmarHotel(reserva): string
+    }
+    interface PagoConnector {
+        +cobrar(monto, medio): Resultado
+        +reembolsar(pagoId): Resultado
+    }
+    interface CacheConnector {
+        +get(clave): any
+        +set(clave, valor, ttl): void
+        +crearHold(reserva, ttl): void
+        +liberarHold(reservaId): void
+    }
+    interface EventPublisher {
+        +publish(evento): void
+    }
+}
+
+' ---- dependencias de servicios ----
+BusquedaService ..> GdsConnector
+BusquedaService ..> HotelConnector
+BusquedaService ..> CacheConnector
+
+ReservaService ..> ReservaRepository
+ReservaService ..> CacheConnector
+ReservaService ..> GdsConnector
+ReservaService ..> HotelConnector
+ReservaService ..> EventPublisher
+
+PagoService ..> PagoRepository
+PagoService ..> PagoConnector
+PagoService ..> EventPublisher
+
+' ---- productos del dominio ----
+ReservaService ..> Reserva
+PagoService ..> Pago
+BusquedaService ..> Oferta
+
+@enduml

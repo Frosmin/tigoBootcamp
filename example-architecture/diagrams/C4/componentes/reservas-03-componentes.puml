@@ -1,0 +1,78 @@
+@startuml reservas-03-componentes
+' ============================================================
+' C4 - Nivel 3: Diagrama de Componentes
+' Contenedor: API REST del Sistema de Reservas
+' Enfoque: estructura interna basada en template + librerias conectoras
+' ============================================================
+' Usa las librerias C4 locales (binaries/) en lugar de descargarlas de internet
+!define RELATIVE_INCLUDE "."
+!include ../../../binaries/C4_Component.puml
+
+title Diagrama de Componentes (C3) - API REST del Sistema de Reservas
+
+Person(viajero, "Viajero", "Reserva vuelos y hoteles.")
+
+System_Ext(idp, "Proveedor de Identidad", "OAuth2 / OIDC")
+System_Ext(gds, "GDS de Vuelos", "Amadeus / Sabre")
+System_Ext(hoteles, "Proveedor de Hoteles", "Channel manager")
+System_Ext(pagos, "Pasarela de Pagos", "Cobros y reembolsos")
+ContainerDb(db, "Base de Datos", "PostgreSQL", "Reservas y pagos.")
+ContainerDb(cache, "Cache", "Redis", "Disponibilidad y bloqueos.")
+ContainerQueue(broker, "Bus de Eventos", "Kafka / RabbitMQ", "Eventos de dominio.")
+
+Container_Boundary(api, "API REST") {
+    ' --- Capa de entrada (rutas ultimate-express) ---
+    Component(cSearch, "Router de Búsqueda", "ultimate-express Router", "Endpoints de búsqueda de vuelos y hoteles.")
+    Component(cBooking, "Router de Reservas", "ultimate-express Router", "Endpoints de creación, consulta y cancelación de reservas.")
+    Component(cPayment, "Router de Pagos", "ultimate-express Router", "Endpoints de cobro y reembolso.")
+    Component(security, "Middleware de Seguridad", "ultimate-express Middleware", "Valida el token y resuelve el usuario autenticado.")
+
+    ' --- Casos de uso / logica de aplicacion ---
+    Component(sSearch, "Servicio de Búsqueda", "Módulo Node.js", "Agrega y normaliza disponibilidad y tarifas.")
+    Component(sBooking, "Servicio de Reservas", "Módulo Node.js", "Máquina de estados de la reserva: bloqueo, confirmación, cancelación.")
+    Component(sPayment, "Servicio de Pagos", "Módulo Node.js", "Orquesta el ciclo de pago asociado a la reserva.")
+
+    ' --- Persistencia ---
+    Component(repo, "Repositorios", "pg (node-postgres)", "Acceso a reservas, pasajeros/huéspedes y pagos.")
+    Component(publisher, "Publicador de Eventos", "Messaging", "Publica eventos de dominio en el bus.")
+
+    ' --- Librerias conectoras (adaptadores a terceros) ---
+    Component(connGds, "Conector GDS Vuelos", "Librería conectora", "Adapta las llamadas al GDS de aerolíneas.")
+    Component(connHotel, "Conector Hoteles", "Librería conectora", "Adapta las llamadas al proveedor de hoteles.")
+    Component(connPay, "Conector Pagos", "Librería conectora", "Adapta las llamadas a la pasarela de pagos.")
+    Component(connCache, "Conector Cache", "Librería conectora", "Lectura/escritura de disponibilidad y holds.")
+}
+
+Rel(viajero, security, "Solicitudes autenticadas", "HTTPS/JSON")
+Rel(security, idp, "Valida token", "OIDC")
+Rel(security, cSearch, "Enruta", "")
+Rel(security, cBooking, "Enruta", "")
+Rel(security, cPayment, "Enruta", "")
+
+Rel(cSearch, sSearch, "Invoca")
+Rel(cBooking, sBooking, "Invoca")
+Rel(cPayment, sPayment, "Invoca")
+
+Rel(sSearch, connGds, "Consulta vuelos")
+Rel(sSearch, connHotel, "Consulta hoteles")
+Rel(sSearch, connCache, "Cachea resultados")
+
+Rel(sBooking, connGds, "Confirma vuelo")
+Rel(sBooking, connHotel, "Confirma hotel")
+Rel(sBooking, connCache, "Bloqueos temporales")
+Rel(sBooking, repo, "Lee/escribe reservas")
+Rel(sBooking, publisher, "Publica eventos")
+
+Rel(sPayment, connPay, "Cobra/reembolsa")
+Rel(sPayment, repo, "Persiste estado de pago")
+Rel(sPayment, publisher, "Publica eventos")
+
+Rel(connGds, gds, "HTTPS")
+Rel(connHotel, hoteles, "HTTPS")
+Rel(connPay, pagos, "HTTPS")
+Rel(connCache, cache, "RESP")
+Rel(repo, db, "SQL (pg)")
+Rel(publisher, broker, "AMQP/Kafka")
+
+SHOW_LEGEND()
+@enduml

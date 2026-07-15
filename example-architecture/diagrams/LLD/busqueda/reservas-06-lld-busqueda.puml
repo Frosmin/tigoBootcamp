@@ -1,0 +1,103 @@
+@startuml reservas-06-lld-busqueda
+' ============================================================
+' LLD - Diagrama de Secuencia (Bajo Nivel)
+' Backend: Servicio de Busqueda
+' ============================================================
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam sequence {
+    ArrowColor #1168BD
+    ArrowFontColor #333333
+    LifeLineBorderColor #1168BD
+    LifeLineBackgroundColor #D6E4F0
+    ParticipantBorderColor #003865
+    ParticipantBackgroundColor #003865
+    ParticipantFontColor #FFFFFF
+    ActorBorderColor #003865
+    ActorBackgroundColor #003865
+    BoxBorderColor #1168BD
+    BoxFontColor #003865
+}
+skinparam noteBackgroundColor #FFF3CD
+skinparam noteBorderColor #E0A800
+
+title LLD - Servicio de Busqueda (Node.js / ultimate-express)
+
+actor "Viajero" as user
+participant "Middleware\nde Seguridad" as mw
+participant "Router de\nBusqueda" as router
+
+box "Servicio de Busqueda" #EAF2FB
+    participant "Servicio de\nBusqueda" as svc
+    participant "Conector\nCache" as cCache
+    participant "Conector\nGDS Vuelos" as cGds
+    participant "Conector\nHoteles" as cHotel
+end box
+
+participant "Cache\n(Redis)" as redis
+participant "GDS Vuelos" as gds
+participant "Proveedor\nHoteles" as hotel
+
+autonumber "<b>[00]"
+
+user -> mw : GET /search?origen&destino&fechas
+activate mw
+mw -> mw : valida JWT / resuelve usuario
+alt token invalido
+    mw --> user : 401 Unauthorized
+else token valido
+    mw -> router : next()
+    activate router
+    router -> router : valida y parsea query params
+    alt parametros invalidos
+        router --> user : 400 Bad Request
+    else parametros validos
+        router -> svc : buscar(criterios)
+        activate svc
+
+        svc -> cCache : get(claveBusqueda)
+        activate cCache
+        cCache -> redis : GET search:{hash}
+        redis --> cCache : valor | null
+        cCache --> svc : hit | miss
+        deactivate cCache
+
+        alt cache HIT
+            svc --> router : resultados (desde cache)
+        else cache MISS
+            par consulta vuelos
+                svc -> cGds : buscarVuelos(criterios)
+                activate cGds
+                cGds -> gds : GET /flights
+                gds --> cGds : tarifas vuelos
+                cGds --> svc : vuelos normalizados
+                deactivate cGds
+            else consulta hoteles
+                svc -> cHotel : buscarHoteles(criterios)
+                activate cHotel
+                cHotel -> hotel : GET /availability
+                hotel --> cHotel : tarifas hoteles
+                cHotel --> svc : hoteles normalizados
+                deactivate cHotel
+            end
+
+            svc -> svc : combina y ordena ofertas
+            svc -> cCache : set(claveBusqueda, resultados, TTL)
+            activate cCache
+            cCache -> redis : SETEX search:{hash} TTL
+            deactivate cCache
+            svc --> router : resultados (frescos)
+        end
+        deactivate svc
+        router --> user : 200 OK (ofertas)
+    end
+    deactivate router
+end
+deactivate mw
+
+note over svc, cHotel
+  Si un proveedor falla, se aplica timeout y se
+  devuelven resultados parciales (degradacion elegante).
+end note
+
+@enduml
