@@ -1,0 +1,229 @@
+@startuml notificaciones-04-clases
+' ============================================================
+' C4 - Nivel 4: Código (Diagrama de Clases)
+' Sistema: P07 - Microservicio de Notificaciones
+' ============================================================
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    ArrowColor #1168BD
+    FontColor #1A1A1A
+    AttributeFontColor #1A1A1A
+    StereotypeFontColor #003865
+}
+skinparam package {
+    BackgroundColor #F4F8FD
+    BorderColor #9BB7D4
+    FontColor #003865
+}
+skinparam enum {
+    BackgroundColor #FFF7E6
+    BorderColor #E0A800
+    FontColor #1A1A1A
+}
+
+title Diagrama de Clases (C4 - Código) - Microservicio P07 Notificaciones
+
+package "Dominio" {
+    enum Canal {
+        EMAIL
+        SMS
+    }
+
+    enum EstadoNotificacion {
+        ENCOLADA
+        ENVIADA
+        FALLIDA
+    }
+
+    enum ResultadoIntento {
+        EXITOSO
+        FALLIDO
+    }
+
+    class Plantilla {
+        +id: string
+        +nombre: string
+        +canal: Canal
+        +contenido: string
+        +variables: string[]
+        +validarVariables(valores: object): void
+        +renderizar(valores: object): string
+    }
+
+    class Notificacion {
+        +id: string
+        +canal: Canal
+        +destinatario: string
+        +plantillaId: string
+        +variables: object
+        +estado: EstadoNotificacion
+        +intentos: number
+        +idempotencyKey: string
+        +creadaEn: Date
+        +marcarEnviada(): void
+        +marcarFallida(): void
+        +puedeReintentarse(maxIntentos: number): boolean
+    }
+
+    class Intento {
+        +id: string
+        +notificacionId: string
+        +numero: number
+        +resultado: ResultadoIntento
+        +detalle: string
+        +timestamp: Date
+    }
+
+    class PoliticaReintentos {
+        +maxIntentos: number
+        +demoraBaseMs: number
+        +puedeReintentar(notificacion: Notificacion): boolean
+        +calcularDemora(numeroIntento: number): number
+    }
+}
+
+Plantilla --> Canal
+Notificacion --> Canal
+Notificacion --> EstadoNotificacion
+Notificacion "1" --> "1" Plantilla
+Notificacion "1" *-- "0..*" Intento
+Intento --> ResultadoIntento
+PoliticaReintentos ..> Notificacion
+
+package "API (ultimate-express + Zod)" {
+    class NotificacionController {
+        +POST /api/v1/notifications(req, res): void
+        +GET /api/v1/notifications/:id(req, res): void
+        +POST /api/v1/notifications/:id/retry(req, res): void
+        +GET /api/v1/notifications(req, res): void
+    }
+
+    class PlantillaController {
+        +POST /api/v1/templates(req, res): void
+        +PUT /api/v1/templates/:id(req, res): void
+        +DELETE /api/v1/templates/:id(req, res): void
+    }
+
+    class ValidationMiddleware {
+        +validate(schema): Middleware
+    }
+}
+
+package "Aplicación" {
+    class NotificacionService {
+        +crear(command, idempotencyKey): Notificacion
+        +obtener(id): Notificacion
+        +listar(canal, estado, page, pageSize): Page
+        +reintentar(id): Notificacion
+    }
+
+    class PlantillaService {
+        +crear(command): Plantilla
+        +actualizar(id, command): Plantilla
+        +eliminar(id): void
+    }
+
+    class ProcesadorEnvios {
+        +procesarSiguiente(): void
+        +procesar(notificacionId: string): void
+        -registrarResultado(resultado): Intento
+    }
+}
+
+ValidationMiddleware --> NotificacionController
+ValidationMiddleware --> PlantillaController
+NotificacionController --> NotificacionService
+PlantillaController --> PlantillaService
+
+package "Persistencia" {
+    interface NotificacionRepository {
+        +findById(id): Notificacion
+        +findPage(filtros, page, pageSize): Page
+        +findByIdempotencyKey(key): Notificacion
+        +save(notificacion): Notificacion
+        +updateEstado(id, estado): void
+    }
+
+    interface PlantillaRepository {
+        +findById(id): Plantilla
+        +existsByNombreAndCanal(nombre, canal, excludeId): boolean
+        +save(plantilla): Plantilla
+        +deleteById(id): void
+    }
+
+    interface IntentoRepository {
+        +save(intento): Intento
+        +findByNotificacionId(id): Intento[]
+    }
+}
+
+package "Adaptadores e infraestructura" {
+    interface ColaNotificaciones {
+        +encolar(notificacionId: string): void
+        +encolarDiferido(notificacionId: string, delayMs: number): void
+        +siguiente(): string
+    }
+
+    interface DeliveryConnector {
+        +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
+    }
+
+    class TigoEmailSmsConnector {
+        +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
+    }
+
+    class RedisQueueAdapter {
+        +encolar(notificacionId: string): void
+        +encolarDiferido(notificacionId: string, delayMs: number): void
+        +siguiente(): string
+    }
+
+    class ThroughputLimiter {
+        +maxPorMinuto: number
+        +adquirirPermiso(): boolean
+    }
+
+    class IdempotencyGuard {
+        +reservar(key: string): boolean
+        +fueEntregada(notificacionId: string): boolean
+    }
+}
+
+TigoEmailSmsConnector ..|> DeliveryConnector
+RedisQueueAdapter ..|> ColaNotificaciones
+
+NotificacionService ..> NotificacionRepository
+NotificacionService ..> PlantillaRepository
+NotificacionService ..> ColaNotificaciones
+NotificacionService ..> IdempotencyGuard
+NotificacionService ..> Notificacion
+
+PlantillaService ..> PlantillaRepository
+PlantillaService ..> Plantilla
+
+ProcesadorEnvios ..> NotificacionRepository
+ProcesadorEnvios ..> PlantillaRepository
+ProcesadorEnvios ..> IntentoRepository
+ProcesadorEnvios ..> ColaNotificaciones
+ProcesadorEnvios ..> DeliveryConnector
+ProcesadorEnvios ..> ThroughputLimiter
+ProcesadorEnvios ..> IdempotencyGuard
+ProcesadorEnvios ..> PoliticaReintentos
+
+note right of NotificacionService
+  Reglas:
+  - plantilla existente
+  - variables completas
+  - no duplicar por idempotencyKey
+  - no reenviar si está ENVIADA
+end note
+
+note right of PlantillaService
+  El nombre debe ser único por canal.
+end note
+
+@enduml

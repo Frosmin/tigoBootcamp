@@ -1,0 +1,231 @@
+@startuml
+
+title Proceso de Negocio (BPMN) - Envío de Notificación
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor white
+    BorderColor #1676D2
+    FontColor #000000
+    DiamondBackgroundColor #FFF2CC
+    DiamondBorderColor #C99A00
+    StartColor #222222
+    EndColor #222222
+    BarColor #1676D2
+}
+
+skinparam swimlane {
+    BorderColor #8AB4E8
+    TitleBackgroundColor #E8F1FB
+    TitleFontColor #003B70
+}
+
+|Servicio interno emisor|
+
+start
+
+:Solicitar envío de notificación\nPOST /api/v1/notifications;
+
+note right
+Datos enviados:
+- canal: EMAIL o SMS
+- destinatario
+- plantillaId
+- variables
+- idempotencyKey
+end note
+
+|API de Notificaciones|
+
+:Recibir solicitud;
+
+:Validar formato de entrada,\nautenticación y autorización;
+
+if (¿Solicitud válida?) then (Sí)
+
+    :Buscar plantilla por plantillaId;
+
+    if (¿Plantilla existente?) then (Sí)
+
+        :Obtener variables requeridas\nde la plantilla;
+
+        if (¿Variables completas?) then (Sí)
+
+            :Validar clave de idempotencia;
+
+            if (¿Notificación ya registrada?) then (Sí)
+
+                :Devolver notificación existente\nsin volver a enviarla;
+
+                |Servicio interno emisor|
+
+                :Recibir identificador y estado existente;
+
+                stop
+
+            else (No)
+
+                |API de Notificaciones|
+
+                :Crear notificación;
+
+                note right
+                estado = ENCOLADA
+                intentos = 0
+                end note
+
+                :Guardar notificación\nen base de datos;
+
+                :Publicar trabajo de envío\nen la cola;
+
+                |Servicio interno emisor|
+
+                :Recibir respuesta 202 Accepted\ncon id y estado ENCOLADA;
+
+            endif
+
+        else (No)
+
+            :Rechazar solicitud por\nvariables faltantes;
+
+            |Servicio interno emisor|
+
+            :Recibir error de validación\nHTTP 400;
+
+            stop
+
+        endif
+
+    else (No)
+
+        :Rechazar solicitud por\nplantilla inexistente;
+
+        |Servicio interno emisor|
+
+        :Recibir error TEMPLATE_NOT_FOUND\nHTTP 404;
+
+        stop
+
+    endif
+
+else (No)
+
+    :Rechazar solicitud inválida;
+
+    |Servicio interno emisor|
+
+    :Recibir error de validación\nHTTP 400 o 401;
+
+    stop
+
+endif
+
+
+|Procesador de Notificaciones|
+
+:Consumir notificación de la cola;
+
+:Aplicar límite configurable\nde envíos por minuto;
+
+:Renderizar plantilla\ncon las variables recibidas;
+
+
+while (¿Intentos disponibles?) is (Sí)
+
+    :Incrementar número de intento;
+
+    :Registrar intento con\nresultado PENDIENTE;
+
+    |Tigo Library|
+
+    if (¿Canal de envío?) then (EMAIL)
+
+        :Invocar conector de email;
+
+    else (SMS)
+
+        :Invocar conector de SMS;
+
+    endif
+
+    |Proveedor Email / SMS|
+
+    :Procesar envío de la notificación;
+
+    :Devolver resultado del envío;
+
+    |Procesador de Notificaciones|
+
+    if (¿Envío exitoso?) then (Sí)
+
+        :Marcar intento como EXITOSO;
+
+        :Actualizar notificación\nestado = ENVIADA;
+
+        :Guardar referencia o respuesta\ndel proveedor;
+
+        |Servicio interno emisor|
+
+        :Consultar estado\nGET /api/v1/notifications/{id};
+
+        :Recibir estado ENVIADA;
+
+        stop
+
+    else (No)
+
+        :Marcar intento como FALLIDO;
+
+        :Registrar causa del error;
+
+        if (¿Error permite reintento?) then (Sí)
+
+            :Calcular backoff exponencial;
+
+            note right
+            Ejemplo:
+            intento 1 = 5 segundos
+            intento 2 = 10 segundos
+            intento 3 = 20 segundos
+            end note
+
+            :Esperar tiempo de backoff;
+
+        else (No)
+
+            :Finalizar política de reintentos;
+
+            break
+
+        endif
+
+    endif
+
+endwhile (No)
+
+
+|Procesador de Notificaciones|
+
+:Actualizar notificación\nestado = FALLIDA;
+
+:Guardar cantidad total\nde intentos realizados;
+
+|Servicio interno emisor|
+
+:Consultar estado\nGET /api/v1/notifications/{id};
+
+:Recibir estado FALLIDA;
+
+stop
+
+legend right
+|= Elemento |= Descripción |
+| Servicio interno | Sistema que solicita la notificación |
+| API | Valida y registra la solicitud |
+| Procesador | Ejecuta envíos y reintentos |
+| Tigo Library | Conector de email y SMS |
+| Proveedor | Servicio externo que entrega el mensaje |
+endlegend
+
+@enduml

@@ -1,0 +1,75 @@
+@startuml notificaciones-03-componentes
+' ============================================================
+' C4 - Nivel 3: Diagrama de Componentes
+' Contenedores: API REST y Worker del microservicio P07
+' ============================================================
+!define RELATIVE_INCLUDE "."
+!include ../../../../template-architecture/binaries/C4_Component.puml
+
+LAYOUT_LEFT_RIGHT()
+
+title Diagrama de Componentes (C3) - Microservicio P07 Notificaciones
+
+System_Ext(emisores, "Servicios internos emisores", "Clientes internos de la API.")
+System_Ext(proveedor, "Proveedor de email y SMS", "Entrega los mensajes solicitados.")
+ContainerDb(db, "PostgreSQL", "@tigo/postgres-connector", "Plantillas, notificaciones e intentos.")
+ContainerDb(redis, "Redis", "@tigo/redis-connector", "Cola, trabajos diferidos, idempotencia y throughput.")
+
+Container_Boundary(api, "API REST - Node.js / ultimate-express") {
+    Component(routes, "Rutas y controladores", "ultimate-express", "Expone los endpoints /api/v1 de notificaciones y plantillas y genera respuestas estandarizadas.")
+    Component(validation, "Validación y seguridad", "Middleware / Zod / Helmet", "Valida body, params, query y headers antes de ejecutar cada caso de uso.")
+    Component(notificationService, "Servicio de notificaciones", "Módulo de aplicación", "Crea, consulta, filtra y solicita reintentos de notificaciones sin duplicados.")
+    Component(templateService, "Servicio de plantillas", "Módulo de aplicación", "Crea, modifica y elimina plantillas; verifica nombre único por canal y variables requeridas.")
+    Component(templateRenderer, "Validador y renderizador", "Módulo de dominio", "Comprueba que todas las variables estén presentes y genera el contenido final.")
+    Component(notificationRepo, "Repositorio de notificaciones e intentos", "@tigo/postgres-connector", "Persiste notificaciones, estados e historial de intentos.")
+    Component(templateRepo, "Repositorio de plantillas", "@tigo/postgres-connector", "Persiste y consulta plantillas por identificador, nombre y canal.")
+    Component(queueAdapter, "Adaptador de cola", "@tigo/redis-connector", "Encola envíos y reintentos diferidos y reserva claves de idempotencia.")
+}
+
+Container_Boundary(worker, "Worker de envíos - Node.js") {
+    Component(dispatchWorker, "Procesador de envíos", "Worker", "Consume trabajos, coordina el envío y registra el resultado de cada intento.")
+    Component(retryPolicy, "Política de reintentos", "Dominio", "Calcula el backoff exponencial y bloquea reintentos al alcanzar el máximo.")
+    Component(rateLimiter, "Limitador de throughput", "Redis", "Aplica el máximo configurable de envíos por minuto.")
+    Component(deliveryGuard, "Control de idempotencia", "Redis + dominio", "Evita entregas duplicadas y no permite reenviar una notificación ya enviada.")
+    Component(tigoConnector, "Conector de email/SMS", "Tigo Library", "Adapta los canales EMAIL y SMS al proveedor externo.")
+}
+
+Rel(emisores, validation, "RF-7.1 a RF-7.5", "HTTPS / REST / JSON")
+Rel(validation, routes, "Entrega solicitudes válidas")
+Rel(routes, notificationService, "Crear, consultar, listar y reintentar")
+Rel(routes, templateService, "Crear, modificar y eliminar")
+
+Rel(notificationService, templateRenderer, "Valida plantilla y variables")
+Rel(notificationService, notificationRepo, "Lee y persiste")
+Rel(notificationService, queueAdapter, "Encola envío o reintento")
+Rel(templateService, templateRepo, "Lee y persiste")
+
+Rel(notificationRepo, db, "SQL parametrizado")
+Rel(templateRepo, db, "SQL parametrizado")
+Rel(queueAdapter, redis, "RESP")
+
+Rel(dispatchWorker, redis, "Consume trabajos", "RESP")
+Rel(dispatchWorker, notificationRepo, "Actualiza estado e intentos")
+Rel(dispatchWorker, templateRepo, "Obtiene la plantilla")
+Rel(dispatchWorker, templateRenderer, "Renderiza contenido")
+Rel(dispatchWorker, retryPolicy, "Evalúa y programa reintentos")
+Rel(dispatchWorker, rateLimiter, "Solicita permiso de envío")
+Rel(dispatchWorker, deliveryGuard, "Verifica entrega e idempotencia")
+Rel(retryPolicy, queueAdapter, "Programa trabajo diferido")
+Rel(rateLimiter, redis, "Actualiza contador", "RESP")
+Rel(deliveryGuard, redis, "Reserva o consulta clave", "RESP")
+Rel(dispatchWorker, tigoConnector, "Envía mensaje")
+Rel(tigoConnector, proveedor, "Entrega email o SMS", "HTTPS")
+
+note bottom of routes
+  RF-7.1  POST /api/v1/notifications
+  RF-7.2  POST /api/v1/templates
+          PUT /api/v1/templates/{id}
+          DELETE /api/v1/templates/{id}
+  RF-7.3  GET /api/v1/notifications/{id}
+  RF-7.4  POST /api/v1/notifications/{id}/retry
+  RF-7.5  GET /api/v1/notifications?canal&estado&page&pageSize
+end note
+
+SHOW_LEGEND()
+@enduml
