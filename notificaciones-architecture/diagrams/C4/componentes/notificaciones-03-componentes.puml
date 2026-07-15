@@ -1,7 +1,7 @@
 @startuml notificaciones-03-componentes
 
 !define RELATIVE_INCLUDE "."
-!include ../../../../template-architecture/binaries/C4_Component.puml
+!include ../../../../notificaciones-architecture/binariess/C4_Component.puml
 
 LAYOUT_LEFT_RIGHT()
 

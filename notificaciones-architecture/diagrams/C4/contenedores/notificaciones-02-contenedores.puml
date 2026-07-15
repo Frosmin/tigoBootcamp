@@ -1,6 +1,6 @@
 @startuml notificaciones-02-contenedores
 !define RELATIVE_INCLUDE "."
-!include ../../../../template-architecture/binaries/C4_Container.puml
+!include ../../../../notificaciones-architecture/binariess/C4_Container.puml
 
 LAYOUT_LEFT_RIGHT()
 
