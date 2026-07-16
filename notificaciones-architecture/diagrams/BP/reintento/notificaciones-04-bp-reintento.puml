@@ -1,6 +1,6 @@
 @startuml notificaciones-04-bp-reintento
 
-title Proceso de Negocio - RF-7.4 Reintento Manual de Notificación
+title Proceso de Negocio Reintento de Notificación
 
 skinparam backgroundColor white
 skinparam shadowing false

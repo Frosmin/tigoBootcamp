@@ -54,21 +54,20 @@ if (¿Solicitud válida?) then (Sí)
                 :Recibir HTTP 202 Accepted\ncon id y estado ENCOLADA;
             endif
         else (No)
-            :Rechazar por variables faltantes;
+            :Rechazar por variables faltantes Error;
             |Servicio interno emisor|
-            :Recibir HTTP 400;
             stop
         endif
     else (No)
-        :Rechazar por plantilla inexistente;
+        :Rechazar por plantilla inexistente Error;
         |Servicio interno emisor|
-        :Recibir HTTP 404;
+        
         stop
     endif
 else (No)
-    :Rechazar solicitud inválida\no no autorizada;
+    :Rechazar solicitud inválida\no no autorizada Error;
     |Servicio interno emisor|
-    :Recibir HTTP 400, 401 o 403;
+    
     stop
 endif
 

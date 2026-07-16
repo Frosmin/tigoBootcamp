@@ -1,6 +1,6 @@
 @startuml notificaciones-03-bp-consulta-historial
 
-title Consulta de Estado y RF-7.5 Historial
+title Consulta de Estado y Historial
 
 skinparam backgroundColor white
 skinparam shadowing false
