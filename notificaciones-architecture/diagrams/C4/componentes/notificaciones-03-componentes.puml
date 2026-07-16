@@ -5,7 +5,7 @@
 
 LAYOUT_LEFT_RIGHT()
 
-title Diagrama de Componentes (C3) - Microservicio Notificaciones
+title Diagrama de Componentes (C3) - Notificaciones
 
 Person(emisores, "Emisores", "Clientes internos de la API.")
 System_Ext(proveedor, "Proveedor de email y SMS", "Entrega los mensajes solicitados.")
@@ -27,7 +27,7 @@ Container_Boundary(worker, "Worker de envíos - Node.js") {
     Component(dispatchWorker, "Procesador de envíos", "Worker", "Consume trabajos, coordina el envío y registra el resultado de cada intento.")
     Component(retryPolicy, "Política de reintentos", "Dominio", "Calcula el backoff exponencial y bloquea reintentos al alcanzar el máximo.")
     Component(rateLimiter, "Limitador de throughput", "Redis", "Aplica el máximo configurable de envíos por minuto.")
-    Component(deliveryGuard, "Control de idempotencia", "Redis + dominio", "Evita entregas duplicadas y no permite reenviar una notificación ya enviada.")
+    Component(deliveryGuard, "Control de idempotencia", "Redis", "Evita entregas duplicadas y no permite reenviar una notificación ya enviada.")
     Component(tigoConnector, "Conector de email/SMS", "Tigo Library", "Adapta los canales EMAIL y SMS al proveedor externo.")
 }
 

@@ -8,7 +8,8 @@
     "test": "vitest run test/unit-test/",
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "coverage": "vitest run --coverage test/unit-test/"
+    "coverage": "vitest run --coverage test/unit-test/",
+    "sonar": "sonar"
   },
   "repository": {
     "type": "git",

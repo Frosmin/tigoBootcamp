@@ -5,7 +5,7 @@
 
 LAYOUT_LEFT_RIGHT()
 
-title Diagrama de Contexto (C1) - Microservicio Notificaciones
+title Diagrama de Contexto (C1) - Notificaciones
 
 Person(emisores,"Emisores", "Sistemas internos que gestionan plantillas, solicitan notificaciones y consultan su estado e historial.")
 

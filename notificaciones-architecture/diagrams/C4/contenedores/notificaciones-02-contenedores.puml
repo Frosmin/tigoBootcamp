@@ -4,7 +4,7 @@
 
 LAYOUT_LEFT_RIGHT()
 
-title Diagrama de Contenedores (C2) - Microservicio Notificaciones
+title Diagrama de Contenedores (C2) - Notificaciones
 
 Person(emisores, "Emisores", "Consumen la API REST de notificaciones y plantillas.")
 System_Ext(proveedor, "Proveedor de email y SMS", "Entrega mensajes por email y SMS.")

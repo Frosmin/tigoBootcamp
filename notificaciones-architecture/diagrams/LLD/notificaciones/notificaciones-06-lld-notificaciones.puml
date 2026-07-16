@@ -218,9 +218,5 @@ else solicitud valida
 end
 deactivate mw
 
-note over svc, redis
-  Los valores de pageSize, máximo de intentos y backoff
-  provienen de configuración; el diagrama no fija constantes.
-end note
 
 @enduml
