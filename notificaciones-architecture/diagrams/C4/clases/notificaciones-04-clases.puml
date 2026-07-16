@@ -211,16 +211,6 @@ ProcesadorEnvios ..> ThroughputLimiter
 ProcesadorEnvios ..> IdempotencyGuard
 ProcesadorEnvios ..> PoliticaReintentos
 
-note right of NotificacionService
-  Reglas:
-  - plantilla existente
-  - variables completas
-  - no duplicar por idempotencyKey
-  - no reenviar si está ENVIADA
-end note
 
-note right of PlantillaService
-  El nombre debe ser único por canal.
-end note
 
 @enduml

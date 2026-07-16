@@ -22,7 +22,7 @@ skinparam sequence {
 skinparam noteBackgroundColor #FFF3CD
 skinparam noteBorderColor #E0A800
 
-title HLD - Secuencia integral de notificaciones (API -> Worker -> Proveedor)
+title HLD - Secuencia de notificaciones (API -> Worker -> Proveedor)
 
 actor "Servicio interno\nemisor" as emisor
 
@@ -31,7 +31,7 @@ box "Microservicio P07 Notificaciones" #EAF2FB
     database "PostgreSQL" as db
     participant "Redis\nCola y coordinación" as redis
     participant "Worker\nde envíos" as worker
-    participant "Conector\nTigo Library" as tigo
+    participant "Tigo Library" as tigo
 end box
 
 participant "Proveedor de\nemail/SMS" as proveedor
@@ -113,10 +113,5 @@ opt reintento de una notificación FALLIDA
     deactivate api
 end
 
-note over api, proveedor
-  La API responde sin esperar la entrega.
-  Redis coordina idempotencia, throughput y trabajos diferidos.
-  Los reintentos nunca bloquean al worker.
-end note
 
 @enduml
