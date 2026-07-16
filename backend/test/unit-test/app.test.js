@@ -17,7 +17,9 @@ vi.mock('body-parser', () => ({ default: { json: vi.fn(() => 'jsonMiddleware') }
 vi.mock('@tigo/logger', () => ({ httpLoggerMiddleware: vi.fn(() => 'httpLoggerMiddleware') }));
 vi.mock('@tigo/redis-connector', () => ({ initializeRedis: vi.fn() }));
 vi.mock('../../src/routes/router.routes.js', () => ({ default: 'routerRoutes' }));
-vi.mock('../../src/utils/config.js', () => ({ default: { API_BASE_PATH: '/v1' } }));
+vi.mock('../../src/utils/config.js', () => ({
+  default: { API_BASE_PATH: '/api/v1', APP_PASSWORD: 'test-password' }
+}));
 
 import '../../src/app.js';
 import ultimateExpress from 'ultimate-express';

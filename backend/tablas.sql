@@ -4,12 +4,19 @@ DROP TABLE IF EXISTS plantilla CASCADE;
 
 CREATE TABLE plantilla (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL UNIQUE,
+    nombre VARCHAR(100) NOT NULL,
     canal VARCHAR(50) NOT NULL,
     contenido TEXT NOT NULL,
     variables VARCHAR(100)[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_plantilla_nombre_canal UNIQUE (nombre, canal),
+    CONSTRAINT ck_plantilla_nombre_no_vacio CHECK (BTRIM(nombre) <> ''),
+    CONSTRAINT ck_plantilla_canal CHECK (canal IN ('EMAIL', 'SMS')),
+    CONSTRAINT ck_plantilla_contenido_no_vacio CHECK (BTRIM(contenido) <> ''),
+    CONSTRAINT ck_plantilla_variables_sin_nulos CHECK (
+        ARRAY_POSITION(variables, NULL) IS NULL
+    )
 );
 
 

@@ -5,5 +5,6 @@
  * y nunca leer process.env directamente.
  */
 export default {
-  API_BASE_PATH: process.env.API_BASE_PATH
+  API_BASE_PATH: process.env.API_BASE_PATH || '/api/v1',
+  APP_PASSWORD: process.env.APP_PASSWORD
 };
