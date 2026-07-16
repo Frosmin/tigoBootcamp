@@ -22,7 +22,7 @@ skinparam enum {
     FontColor #1A1A1A
 }
 
-title Diagrama de Clases (C4 - Código) - Microservicio Notificaciones
+title Diagrama de Clases (C4) - Notificaciones
 
 package "Dominio" {
     enum Canal {

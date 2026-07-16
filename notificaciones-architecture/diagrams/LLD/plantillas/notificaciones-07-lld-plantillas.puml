@@ -1,0 +1,156 @@
+@startuml notificaciones-07-lld-plantillas
+' ============================================================
+' LLD - Diagrama de Secuencia (Bajo Nivel)
+' Módulo: Gestión de Plantillas
+' ============================================================
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam sequence {
+    ArrowColor #1168BD
+    ArrowFontColor #333333
+    LifeLineBorderColor #1168BD
+    LifeLineBackgroundColor #D6E4F0
+    ParticipantBorderColor #003865
+    ParticipantBackgroundColor #003865
+    ParticipantFontColor #FFFFFF
+    ActorBorderColor #003865
+    ActorBackgroundColor #003865
+    BoxBorderColor #1168BD
+    BoxFontColor #003865
+}
+skinparam noteBackgroundColor #FFF3CD
+skinparam noteBorderColor #E0A800
+
+title LLD - Gestión de Plantillas (Node.js / ultimate-express / Zod)
+
+actor "Servicio interno\nautorizado" as emisor
+participant "Middleware de\nseguridad y validación" as mw
+participant "Controlador de\nPlantillas" as controller
+
+box "API REST - Modulo de Plantillas" #EAF2FB
+    participant "Servicio de\nPlantillas" as svc
+    participant "Repositorio de\nPlantillas" as repo
+end box
+
+database "PostgreSQL" as db
+
+autonumber "<b>[00]"
+
+== A. Crear plantilla (RF-7.2) ==
+emisor -> mw : POST /api/v1/templates\n(nombre, canal, contenido, variables[])
+activate mw
+mw -> mw : valida autenticación, autorización\ny esquema Zod
+alt credenciales o datos inválidos
+    mw --> emisor : 400/401/403
+else solicitud valida
+    mw -> controller : create(req)
+    activate controller
+    controller -> svc : crear(command)
+    activate svc
+    svc -> repo : existsByNombreAndCanal(nombre, canal)
+    activate repo
+    repo -> db : SELECT EXISTS plantilla\nWHERE nombre=? AND canal=?
+    db --> repo : true | false
+    repo --> svc : existe | disponible
+    deactivate repo
+
+    alt nombre duplicado en el canal
+        svc --> controller : TEMPLATE_NAME_CONFLICT
+        controller --> emisor : 409 Conflict
+    else nombre disponible
+        svc -> repo : save(plantilla)
+        activate repo
+        repo -> db : INSERT INTO plantillas ...
+        db --> repo : plantilla creada
+        repo --> svc : plantilla creada
+        deactivate repo
+        svc --> controller : plantilla creada
+        controller --> emisor : 201 Created
+    end
+    deactivate svc
+    deactivate controller
+end
+deactivate mw
+
+== B. Actualizar plantilla (RF-7.2) ==
+emisor -> mw : PUT /api/v1/templates/{id}\n(nombre, canal, contenido, variables[])
+activate mw
+mw -> mw : valida autenticación, autorización, id y body
+alt credenciales o datos inválidos
+    mw --> emisor : 400/401/403
+else solicitud valida
+    mw -> controller : update(id, req)
+    activate controller
+    controller -> svc : actualizar(id, command)
+    activate svc
+    svc -> repo : findById(id)
+    activate repo
+    repo -> db : SELECT plantilla WHERE id=?
+    db --> repo : plantilla | null
+    repo --> svc : plantilla | null
+    deactivate repo
+
+    alt plantilla inexistente
+        svc --> controller : TEMPLATE_NOT_FOUND
+        controller --> emisor : 404 Not Found
+    else plantilla existente
+        svc -> repo : existsByNombreAndCanal\n(nombre, canal, excludeId=id)
+        repo -> db : SELECT EXISTS plantilla\nWHERE nombre=? AND canal=? AND id<>?
+        db --> repo : true | false
+        repo --> svc : existe | disponible
+        alt otro registro usa el nombre y canal
+            svc --> controller : TEMPLATE_NAME_CONFLICT
+            controller --> emisor : 409 Conflict
+        else nombre disponible
+            svc -> repo : save(plantilla actualizada)
+            repo -> db : UPDATE plantillas SET ... WHERE id=?
+            db --> repo : plantilla actualizada
+            repo --> svc : plantilla actualizada
+            svc --> controller : plantilla actualizada
+            controller --> emisor : 200 OK
+        end
+    end
+    deactivate svc
+    deactivate controller
+end
+deactivate mw
+
+== C. Eliminar plantilla (RF-7.2) ==
+emisor -> mw : DELETE /api/v1/templates/{id}
+activate mw
+mw -> mw : valida autenticación, autorización e id
+alt solicitud inválida o no autorizada
+    mw --> emisor : 400/401/403
+else solicitud valida
+    mw -> controller : delete(id)
+    activate controller
+    controller -> svc : eliminar(id)
+    activate svc
+    svc -> repo : findById(id)
+    repo -> db : SELECT plantilla WHERE id=?
+    db --> repo : plantilla | null
+    repo --> svc : plantilla | null
+
+    alt plantilla inexistente
+        svc --> controller : TEMPLATE_NOT_FOUND
+        controller --> emisor : 404 Not Found
+    else plantilla existente
+        svc -> repo : deleteById(id)
+        repo -> db : DELETE FROM plantillas WHERE id=?
+        db --> repo : eliminada
+        repo --> svc : ok
+        svc --> controller : sin contenido
+        controller --> emisor : 204 No Content
+    end
+    deactivate svc
+    deactivate controller
+end
+deactivate mw
+
+note over svc, db
+  El nombre de plantilla es único dentro de cada canal.
+  EMAIL y SMS pueden reutilizar el mismo nombre.
+end note
+
+@enduml
