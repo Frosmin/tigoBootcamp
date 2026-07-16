@@ -18,7 +18,6 @@
   "license": "ISC",
   "dependencies": {
     "@tigo/error-code": "^1.0.20",
-    "@tigo/kafka-connector": "^2.1.8",
     "@tigo/logger": "^1.0.1",
     "@tigo/postgres-connector": "^1.1.0",
     "@tigo/redis-connector": "^1.0.35",
