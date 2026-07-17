@@ -5,7 +5,7 @@ vi.mock('@tigo/postgres-connector', () => ({
 }));
 
 import { executeQuery } from '@tigo/postgres-connector';
-import { insertTemplate } from '../../../src/repositories/template.repository.js';
+import { findTemplateById, insertTemplate } from '../../../src/repositories/template.repository.js';
 
 describe('template.repository.js', () => {
   const template = {
@@ -38,5 +38,13 @@ describe('template.repository.js', () => {
     executeQuery.mockResolvedValue([]);
 
     await expect(insertTemplate(template)).resolves.toBeUndefined();
+  });
+
+  it('finds a template by its identifier', async () => {
+    executeQuery.mockResolvedValue([{ id: 8, ...template }]);
+
+    await expect(findTemplateById(8)).resolves.toEqual({ id: 8, ...template });
+    expect(executeQuery.mock.calls.at(-1)[0]).toMatch(/WHERE id = \$1::bigint/);
+    expect(executeQuery.mock.calls.at(-1)[1]).toEqual([8]);
   });
 });

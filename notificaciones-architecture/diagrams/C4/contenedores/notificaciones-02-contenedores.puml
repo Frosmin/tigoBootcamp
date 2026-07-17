@@ -12,13 +12,13 @@ System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de tercero
 System_Boundary(p07, "Microservicio P07 Notificaciones") {
     Container(api, "API REST", "Node.js / ultimate-express / Zod", "Expone api para crear y consultar notificaciones, reintentar fallos y administrar plantillas.")
     Container(worker, "Worker de envíos", "Node.js 22", "Consume trabajos pendientes, renderiza plantillas, controla el throughput, realiza envíos y programa reintentos con backoff exponencial.")
-    ContainerDb(db, "Base de datos", "PostgreSQL", "Persiste plantillas, notificaciones, estados e intentos de entrega.")
-    ContainerDb(redis, "Cola y coordinación", "Redis", "Mantiene la cola, trabajos diferidos, claves de idempotencia y contadores de throughput.")
+    ContainerDb(db, "Base de datos", "PostgreSQL", "Persiste plantillas, notificaciones, claves de idempotencia, estados e intentos de entrega.")
+    ContainerDb(redis, "Cola y coordinación", "Redis Streams", "Mantiene la cola, trabajos diferidos y contadores de throughput.")
 }
 
 Rel(emisores, api, "Envía, consulta, reintenta, lista y gestiona plantillas", "HTTPS / REST / JSON")
 Rel(api, db, "Lee y persiste plantillas, notificaciones e intentos", "SQL")
-Rel(api, redis, "Encola envíos y reintentos; verifica idempotencia", "RESP")
+Rel(api, redis, "Publica envíos mediante XADD", "RESP")
 
 Rel(worker, redis, "Consume trabajos y aplica backoff, idempotencia y límite por minuto", "RESP")
 Rel(worker, db, "Lee plantillas y actualiza estados e intentos", "SQL")

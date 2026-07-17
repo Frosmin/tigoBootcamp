@@ -21,15 +21,25 @@ participant "Worker de envíos" as worker
 participant "Proveedor genérico\nde email/SMS" as proveedor
 
 == Solicitud ==
-emisor -> api : POST /api/v1/notifications
-api -> api : validar datos, plantilla y variables
+emisor -> api : POST /api/v1/notifications\nHeader Idempotency-Key
+api -> api : validar header, datos, plantilla y variables
 
 alt solicitud inválida
     api --> emisor : 400 o 404
 else solicitud válida
-    api -> db : guardar notificación ENCOLADA
-    api -> redis : encolar notificación
-    api --> emisor : 202 Accepted
+    api -> db : INSERT ENCOLADA con clave única
+    alt solicitud duplicada
+        api -> db : consultar y comparar payload
+        api --> emisor : 200 existente o 409 conflicto
+    else solicitud nueva
+        api -> redis : XADD notifications:dispatch
+        alt Redis no disponible
+            api -> db : DELETE compensatorio
+            api --> emisor : 503 Service Unavailable
+        else publicada
+            api --> emisor : 202 Accepted
+        end
+    end
 end
 
 == Entrega asíncrona ==

@@ -20,7 +20,8 @@ valida los datos de entrada y las reglas de negocio.
 
 - Estados permitidos: `ENCOLADA`, `ENVIADA` y `FALLIDA`.
 - Las variables faltantes bloquean el envío.
-- Una `idempotencyKey` repetida no crea ni entrega otra notificación.
+- El header `Idempotency-Key` es obligatorio. La misma clave y payload devuelve
+  la notificación existente; reutilizarla con otro payload devuelve `409`.
 - Una notificación `ENVIADA` no se reenvía.
 - Los reintentos usan backoff exponencial hasta el máximo configurable.
 - El throughput máximo por minuto es configurable.
@@ -30,6 +31,11 @@ valida los datos de entrada y las reglas de negocio.
 El worker consume Redis, renderiza la plantilla y usa una librería genérica de
 terceros para comunicarse con el proveedor externo de email/SMS. Cada resultado
 se registra como un intento en PostgreSQL.
+
+La unicidad idempotente se garantiza en PostgreSQL y Redis Streams se usa solo
+como cola. Como ambas escrituras no comparten una transacción, la API elimina de
+forma compensatoria la notificación nueva si falla `XADD`. Una evolución de mayor
+garantía debería usar un transactional outbox y un publicador independiente.
 
 ## Errores esperados
 

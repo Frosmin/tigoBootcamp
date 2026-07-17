@@ -19,12 +19,12 @@ participant "Controlador" as controller
 participant "Servicio de\nNotificaciones" as service
 participant "Repositorios" as repositories
 database "PostgreSQL" as db
-participant "Cola e\nidempotencia" as queueAdapter
-queue "Redis" as redis
+participant "Adaptador de\nRedis Streams" as queueAdapter
+queue "Redis Stream" as redis
 
 == Crear y encolar ==
-emisor -> validation : POST /api/v1/notifications
-validation -> validation : validar body con Zod
+emisor -> validation : POST /api/v1/notifications\nIdempotency-Key: clave
+validation -> validation : validar header y body con Zod
 alt datos inválidos
     validation --> emisor : 400 Bad Request
 else datos válidos
@@ -41,18 +41,23 @@ else datos válidos
         service --> controller : error 400
         controller --> emisor : 400 Bad Request
     else solicitud válida
-        service -> queueAdapter : reservar idempotencyKey
-        queueAdapter -> redis : SET NX
+        service -> repositories : INSERT con idempotency_key UNIQUE
+        repositories -> db : INSERT ... ON CONFLICT DO NOTHING
         alt solicitud duplicada
             service -> repositories : obtener notificación existente
             repositories -> db : SELECT notificación
-            controller --> emisor : 200 OK
+            service -> service : comparar payload
+            controller --> emisor : 200 OK o 409 Conflict
         else solicitud nueva
-            service -> repositories : guardar ENCOLADA
-            repositories -> db : INSERT notificación
             service -> queueAdapter : encolar(notificacionId)
-            queueAdapter -> redis : publicar trabajo
-            controller --> emisor : 202 Accepted
+            queueAdapter -> redis : XADD notifications:dispatch
+            alt Redis no disponible
+                service -> repositories : eliminar notificación nueva
+                repositories -> db : DELETE compensatorio
+                controller --> emisor : 503 Service Unavailable
+            else publicado
+                controller --> emisor : 202 Accepted
+            end
         end
     end
 end

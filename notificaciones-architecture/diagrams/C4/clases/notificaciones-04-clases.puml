@@ -142,6 +142,7 @@ package "Persistencia" {
         +findPage(filtros, page, pageSize): Page
         +findByIdempotencyKey(key): Notificacion
         +save(notificacion): Notificacion
+        +deleteAfterQueueFailure(id, key): void
         +updateEstado(id, estado): void
     }
 
@@ -184,8 +185,7 @@ package "Adaptadores e infraestructura" {
         +adquirirPermiso(): boolean
     }
 
-    class IdempotencyGuard {
-        +reservar(key: string): boolean
+    class DeliveryGuard {
         +fueEntregada(notificacionId: string): boolean
     }
 }
@@ -196,7 +196,6 @@ RedisQueueAdapter ..|> ColaNotificaciones
 NotificacionService ..> NotificacionRepository
 NotificacionService ..> PlantillaRepository
 NotificacionService ..> ColaNotificaciones
-NotificacionService ..> IdempotencyGuard
 NotificacionService ..> Notificacion
 
 PlantillaService ..> PlantillaRepository
@@ -208,7 +207,7 @@ ProcesadorEnvios ..> IntentoRepository
 ProcesadorEnvios ..> ColaNotificaciones
 ProcesadorEnvios ..> DeliveryConnector
 ProcesadorEnvios ..> ThroughputLimiter
-ProcesadorEnvios ..> IdempotencyGuard
+ProcesadorEnvios ..> DeliveryGuard
 ProcesadorEnvios ..> PoliticaReintentos
 
 

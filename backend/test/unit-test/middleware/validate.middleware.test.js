@@ -56,4 +56,40 @@ describe('validate.middleware.js', () => {
 
     expect(next).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ['EMAIL', 'user@example.com'],
+    ['SMS', '+59170000000']
+  ])('accepts a valid %s notification and normalizes the header', (canal, destinatario) => {
+    const req = {
+      body: { canal, destinatario, plantillaId: 1, variables: { nombre: 'Ana', activo: true, total: 10 } },
+      get: vi.fn(() => ' request-1 '),
+      params: {}
+    };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.createNotification()(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.idempotencyKey).toBe('request-1');
+  });
+
+  it.each([
+    [{ canal: 'EMAIL', destinatario: 'invalid', plantillaId: 1, variables: {} }, 'key'],
+    [{ canal: 'SMS', destinatario: '70000000', plantillaId: 1, variables: {} }, 'key'],
+    [{ canal: 'EMAIL', destinatario: 'a@b.com', plantillaId: 1, variables: { nested: {} } }, 'key'],
+    [{ canal: 'EMAIL', destinatario: 'a@b.com', plantillaId: 1, variables: { nil: null } }, 'key'],
+    [{ canal: 'EMAIL', destinatario: 'a@b.com', plantillaId: 1, variables: {}, extra: true }, 'key'],
+    [{ canal: 'EMAIL', destinatario: 'a@b.com', plantillaId: 1, variables: {} }, undefined]
+  ])('rejects an invalid notification contract', (body, header) => {
+    const req = { body, get: vi.fn(() => header), params: {} };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.createNotification()(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
 });

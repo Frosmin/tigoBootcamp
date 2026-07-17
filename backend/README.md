@@ -95,6 +95,43 @@ reemplazar por el modelo y los endpoints reales del microservicio.
   con `startTimer`/`endTimer`.
 - **ESM**: imports con extension `.js` explicita.
 
+## Crear una notificacion
+
+`POST /api/v1/notifications` crea una notificacion en estado `ENCOLADA` y
+publica su identificador en el Redis Stream configurado por
+`NOTIFICATION_STREAM`.
+
+Headers requeridos:
+
+- `Content-Type: application/json`
+- `Idempotency-Key`: clave de 1 a 128 caracteres
+
+Body:
+
+```json
+{
+  "canal": "EMAIL",
+  "destinatario": "cliente@example.com",
+  "plantillaId": 1,
+  "variables": {
+    "nombre": "Ana",
+    "total": 125.5,
+    "confirmado": true
+  }
+}
+```
+
+El canal debe coincidir con la plantilla y las claves de `variables` deben ser
+exactamente las declaradas por ella. EMAIL valida correo y SMS exige formato
+E.164. Una solicitud nueva devuelve `202`; repetir la misma clave y payload
+devuelve el recurso existente con `200`; reutilizar la clave con otro payload
+devuelve `409`.
+
+La idempotencia se garantiza en PostgreSQL. Redis Streams se usa como cola y,
+si `XADD` falla, la API intenta eliminar compensatoriamente la fila nueva. Una
+evolucion con garantia atomica entre ambas dependencias requeriria un
+transactional outbox.
+
 ## Modelo de datos de ejemplo
 Tabla `example` (crear en la base de datos antes de usar los endpoints):
 
@@ -177,7 +214,8 @@ curl --location 'http://localhost:3050/v1/examples/1' \
 | `P_DB_PASSWORD` | Si | `postgres123` |
 | `P_DB_MAX_CONNECTIONS` | No | `10` |
 | `P_DB_CONNECTION_STRING` | No | `postgresql://user:pass@host:5432/db` (tiene prioridad) |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Si (`@tigo/redis-connector`) | ver `.env.example` |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Si (`ioredis`) | ver `.env.example` |
+| `NOTIFICATION_STREAM` | No | `notifications:dispatch` |
 
 Copiar `.env.example` a `.env` y completar los valores.
 
@@ -210,7 +248,7 @@ npm start      # modo normal
   middleware, route, app); ampliar la cobertura al implementar el servicio real.
 - El acceso a BD se mockea (`@tigo/postgres-connector`); no se requiere una base
   real para correr las pruebas.
-- Cobertura minima esperada del proyecto: `80%`.
+- Cobertura minima esperada del proyecto: `85%`.
 - Ejecutar: `npm run coverage`.
 
 ## Docker

@@ -9,8 +9,8 @@ title Diagrama de Componentes (C3) - Notificaciones
 
 Person(emisores, "Emisores", "Clientes internos")
 System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico entrega los mensajes solicitados.")
-ContainerDb(db, "PostgreSQL", "postgres", "Plantillas, notificaciones e intentos.")
-ContainerDb(redis, "Redis", "redis", "Cola, trabajos diferidos, idempotencia y throughput.")
+ContainerDb(db, "PostgreSQL", "postgres", "Plantillas, notificaciones, idempotencia e intentos.")
+ContainerDb(redis, "Redis", "redis", "Streams, trabajos diferidos y throughput.")
 
 Container_Boundary(api, "API REST - Node.js / ultimate-express") {
     Component(routes, "Rutas y controladores", "ultimate-express", "Expone los endpoints /api/v1 de notificaciones y plantillas y genera respuestas estandarizadas.")
@@ -18,9 +18,9 @@ Container_Boundary(api, "API REST - Node.js / ultimate-express") {
     Component(notificationService, "Servicio de notificaciones", "Módulo de aplicación", "Crea, consulta, filtra y solicita reintentos de notificaciones sin duplicados.")
     Component(templateService, "Servicio de plantillas", "Módulo de aplicación", "Crea, modifica y elimina plantillas; verifica nombre único por canal y variables requeridas.")
     Component(templateRenderer, "Validador y renderizador", "Módulo de dominio", "Comprueba que todas las variables estén presentes y genera el contenido final.")
-    Component(notificationRepo, "Repositorio de notificaciones e intentos", "postgres-connector", "Persiste notificaciones, estados e historial de intentos.")
+    Component(notificationRepo, "Repositorio de notificaciones e intentos", "postgres-connector", "Persiste notificaciones, estados, claves idempotentes e historial de intentos.")
     Component(templateRepo, "Repositorio de plantillas", "postgres-connector", "Persiste y consulta plantillas por identificador, nombre y canal.")
-    Component(queueAdapter, "Adaptador de cola", "redis-connector", "Encola envíos y reintentos diferidos y reserva claves de idempotencia.")
+    Component(queueAdapter, "Adaptador de cola", "ioredis / Redis Streams", "Publica identificadores de notificación mediante XADD.")
 }
 
 Container_Boundary(worker, "Worker de envíos - Node.js") {

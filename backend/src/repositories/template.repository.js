@@ -13,3 +13,13 @@ export const insertTemplate = async ({ nombre, canal, contenido, variables }) =>
   const rows = await executeQuery(query, [nombre, canal, contenido, variables]);
   return rows[0];
 };
+
+export const findTemplateById = async (id) => {
+  const query = `
+    SELECT ${COLUMNS}
+    FROM plantilla
+    WHERE id = $1::bigint;
+  `;
+  const rows = await executeQuery(query, [id]);
+  return rows[0];
+};

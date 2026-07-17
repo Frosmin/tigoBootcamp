@@ -29,7 +29,7 @@ note right
   destinatario
   plantillaId
   variables
-  idempotencyKey
+  Header Idempotency-Key
 end note
 
 |API REST|
@@ -39,19 +39,32 @@ if (¿Solicitud válida?) then (Sí)
     :Buscar plantilla en PostgreSQL;
     if (¿Plantilla existente?) then (Sí)
         :Validar variables requeridas;
-        if (¿Variables completas?) then (Sí)
-            :Consultar y reservar\nclave de idempotencia en Redis;
+        if (¿Variables exactas?) then (Sí)
+            :Insertar ENCOLADA con clave de\nidempotencia única en PostgreSQL;
             if (¿Solicitud duplicada?) then (Sí)
                 :Consultar notificación existente\nen PostgreSQL;
-                |Servicio interno emisor|
-                :Recibir id y estado existente\nsin generar otro envío;
-                stop
+                if (¿Mismo payload?) then (Sí)
+                    |Servicio interno emisor|
+                    :Recibir HTTP 200 con recurso existente\nsin generar otro envío;
+                    stop
+                else (No)
+                    |Servicio interno emisor|
+                    :Recibir HTTP 409 Conflict;
+                    stop
+                endif
             else (No)
                 |API REST|
-                :Persistir notificación en PostgreSQL\nestado = ENCOLADA, intentos = 0;
-                :Publicar id de notificación\nen la cola Redis;
-                |Servicio interno emisor|
-                :Recibir HTTP 202 Accepted\ncon id y estado ENCOLADA;
+                :XADD notificationId\na notifications:dispatch;
+                if (¿Publicación exitosa?) then (Sí)
+                    |Servicio interno emisor|
+                    :Recibir HTTP 202 Accepted\ncon recurso ENCOLADA;
+                else (No)
+                    |API REST|
+                    :Eliminar notificación nueva\ncomo compensación;
+                    |Servicio interno emisor|
+                    :Recibir HTTP 503;
+                    stop
+                endif
             endif
         else (No)
             :Rechazar por variables faltantes Error;

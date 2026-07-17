@@ -25,10 +25,17 @@ CREATE TABLE notificacion (
     canal VARCHAR(50) NOT NULL,
     destinatario VARCHAR(255) NOT NULL,
     plantilla_id BIGINT NOT NULL REFERENCES plantilla(id) ON DELETE RESTRICT,
-    estado VARCHAR(50) NOT NULL DEFAULT 'PENDIENTE',
+    variables JSONB NOT NULL,
+    idempotency_key VARCHAR(128) NOT NULL,
+    estado VARCHAR(50) NOT NULL DEFAULT 'ENCOLADA',
     intentos INTEGER NOT NULL DEFAULT 0 CHECK (intentos >= 0),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_notificacion_idempotency_key UNIQUE (idempotency_key),
+    CONSTRAINT ck_notificacion_canal CHECK (canal IN ('EMAIL', 'SMS')),
+    CONSTRAINT ck_notificacion_destinatario_no_vacio CHECK (BTRIM(destinatario) <> ''),
+    CONSTRAINT ck_notificacion_estado CHECK (estado IN ('ENCOLADA', 'ENVIADA', 'FALLIDA')),
+    CONSTRAINT ck_notificacion_variables_objeto CHECK (JSONB_TYPEOF(variables) = 'object')
 );
 
 
