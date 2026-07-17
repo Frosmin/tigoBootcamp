@@ -14,17 +14,19 @@ vi.mock('../../../src/controllers/template.controller.js', () => ({
   createTemplateController: 'createTemplateController'
 }));
 vi.mock('../../../src/controllers/notification.controller.js', () => ({
-  createNotificationController: 'createNotificationController'
+  createNotificationController: 'createNotificationController',
+  getNotificationController: 'getNotificationController'
 }));
 vi.mock('../../../src/middleware/validate.middleware.js', () => ({
   validateRequestMiddleware: {
     createTemplate: vi.fn(() => 'createTemplateValidator'),
-    createNotification: vi.fn(() => 'createNotificationValidator')
+    createNotification: vi.fn(() => 'createNotificationValidator'),
+    getNotification: vi.fn(() => 'getNotificationValidator')
   }
 }));
 
 describe('router.routes.js', () => {
-  it('registers health, POST /templates and POST /notifications', async () => {
+  it('registers health, templates and notification endpoints', async () => {
     await import('../../../src/routes/router.routes.js');
 
     expect(mockRouter.get).toHaveBeenCalledWith('/health', 'healthController');
@@ -37,6 +39,11 @@ describe('router.routes.js', () => {
       '/notifications',
       'createNotificationValidator',
       'createNotificationController'
+    );
+    expect(mockRouter.get).toHaveBeenCalledWith(
+      '/notifications/:id',
+      'getNotificationValidator',
+      'getNotificationController'
     );
   });
 });

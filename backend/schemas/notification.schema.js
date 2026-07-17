@@ -25,3 +25,13 @@ export const createNotificationSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(128),
   body: notificationBodySchema
 }).strict();
+
+const POSTGRES_BIGINT_MAX = 9223372036854775807n;
+
+export const getNotificationParamsSchema = z.object({
+  id: z.string()
+    .regex(/^[1-9]\d*$/)
+    .refine((value) => (
+      !/^[1-9]\d*$/.test(value) || BigInt(value) <= POSTGRES_BIGINT_MAX
+    ))
+}).strict();

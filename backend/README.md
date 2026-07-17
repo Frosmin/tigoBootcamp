@@ -132,6 +132,17 @@ si `XADD` falla, la API intenta eliminar compensatoriamente la fila nueva. Una
 evolucion con garantia atomica entre ambas dependencias requeriria un
 transactional outbox.
 
+## Consultar una notificacion
+
+`GET /api/v1/notifications/{id}` devuelve `200` con el recurso completo, su
+contador `intentos` y el arreglo `historialIntentos` ordenado por `numero`.
+Mientras el worker no haya procesado una notificacion recién creada, su estado
+es `ENCOLADA`, el contador vale `0` y el historial es `[]`.
+
+Un identificador inválido devuelve `400 BR001` y una notificación inexistente
+devuelve `404 NF001`. El identificador se valida como `BIGINT` positivo sin
+convertirlo a `Number`, para evitar pérdida de precisión.
+
 ## Modelo de datos de ejemplo
 Tabla `example` (crear en la base de datos antes de usar los endpoints):
 
@@ -219,9 +230,7 @@ curl --location 'http://localhost:3050/v1/examples/1' \
 
 Copiar `.env.example` a `.env` y completar los valores.
 
-> Nota: si el servicio no usa Redis, elimina `initializeRedis()` de
-> `src/app.js`, la dependencia `@tigo/redis-connector` de `package.json` y sus
-> variables `REDIS_*`.
+> Redis se inicializa antes de abrir el puerto HTTP y se usa mediante `ioredis`.
 
 ## Ejecucion local
 1. Instalar dependencias (requiere acceso al registry interno `@tigo`):

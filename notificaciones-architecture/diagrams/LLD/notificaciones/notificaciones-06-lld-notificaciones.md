@@ -12,13 +12,15 @@ valida los datos de entrada y las reglas de negocio.
 | Método | Ruta | Resultado principal |
 |---|---|---|
 | `POST` | `/api/v1/notifications` | Valida la plantilla y sus variables, persiste en `ENCOLADA` y publica el trabajo. |
-| `GET` | `/api/v1/notifications/{id}` | Devuelve el estado y los intentos. |
+| `GET` | `/api/v1/notifications/{id}` | Devuelve el recurso, el contador y `historialIntentos` ordenado. |
 | `GET` | `/api/v1/notifications?canal&estado&page&pageSize` | Devuelve el historial filtrado y paginado. |
 | `POST` | `/api/v1/notifications/{id}/retry` | Programa un reintento de una notificación `FALLIDA`. |
 
 ## Reglas
 
 - Estados permitidos: `ENCOLADA`, `ENVIADA` y `FALLIDA`.
+- El identificador se valida como `BIGINT` positivo y se conserva como texto
+  para no perder precisión en JavaScript.
 - Las variables faltantes bloquean el envío.
 - El header `Idempotency-Key` es obligatorio. La misma clave y payload devuelve
   la notificación existente; reutilizarla con otro payload devuelve `409`.

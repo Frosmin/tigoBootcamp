@@ -42,8 +42,12 @@ CREATE TABLE notificacion (
 CREATE TABLE intento (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     notificacion_id BIGINT NOT NULL REFERENCES notificacion(id) ON DELETE CASCADE,
-    resultado TEXT NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    numero INTEGER NOT NULL CHECK (numero > 0),
+    resultado VARCHAR(20) NOT NULL,
+    detalle TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_intento_notificacion_numero UNIQUE (notificacion_id, numero),
+    CONSTRAINT ck_intento_resultado CHECK (resultado IN ('EXITOSO', 'FALLIDO'))
 );
 
 

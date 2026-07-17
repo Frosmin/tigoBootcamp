@@ -5,21 +5,30 @@ vi.mock('../../../src/repositories/template.repository.js', () => ({
 }));
 vi.mock('../../../src/repositories/notification.repository.js', () => ({
   insertNotification: vi.fn(),
+  findNotificationById: vi.fn(),
   findNotificationByIdempotencyKey: vi.fn(),
   deleteNotificationAfterQueueFailure: vi.fn()
 }));
 vi.mock('../../../src/queues/notification.queue.js', () => ({
   enqueueNotification: vi.fn()
 }));
+vi.mock('../../../src/repositories/attempt.repository.js', () => ({
+  findAttemptsByNotificationId: vi.fn()
+}));
 
 import { findTemplateById } from '../../../src/repositories/template.repository.js';
 import {
   deleteNotificationAfterQueueFailure,
+  findNotificationById,
   findNotificationByIdempotencyKey,
   insertNotification
 } from '../../../src/repositories/notification.repository.js';
 import { enqueueNotification } from '../../../src/queues/notification.queue.js';
-import { createNotificationService } from '../../../src/services/notification.service.js';
+import { findAttemptsByNotificationId } from '../../../src/repositories/attempt.repository.js';
+import {
+  createNotificationService,
+  getNotificationService
+} from '../../../src/services/notification.service.js';
 
 describe('notification.service.js', () => {
   const request = {
@@ -117,5 +126,37 @@ describe('notification.service.js', () => {
     await expect(createNotificationService(request, 'request-1')).rejects.toMatchObject({
       errorCode: 'SU001'
     });
+  });
+
+  it('returns a notification with its ordered attempt history', async () => {
+    const attempts = [{ id: '1', numero: 1, resultado: 'FALLIDO' }];
+    findNotificationById.mockResolvedValue(notification);
+    findAttemptsByNotificationId.mockResolvedValue(attempts);
+
+    await expect(getNotificationService('9')).resolves.toEqual({
+      ...notification,
+      historialIntentos: attempts
+    });
+    expect(findAttemptsByNotificationId).toHaveBeenCalledWith('9');
+  });
+
+  it('returns an empty attempt history for an ENCOLADA notification', async () => {
+    findNotificationById.mockResolvedValue(notification);
+    findAttemptsByNotificationId.mockResolvedValue([]);
+
+    await expect(getNotificationService('9')).resolves.toMatchObject({
+      estado: 'ENCOLADA',
+      intentos: 0,
+      historialIntentos: []
+    });
+  });
+
+  it('returns NF001 and does not query attempts when the notification is absent', async () => {
+    findNotificationById.mockResolvedValue(undefined);
+
+    await expect(getNotificationService('999')).rejects.toMatchObject({
+      errorCode: 'NF001'
+    });
+    expect(findAttemptsByNotificationId).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,9 @@
 import { logger } from '@tigo/logger';
 import { createTemplateSchema } from '../../schemas/template.schema.js';
-import { createNotificationSchema } from '../../schemas/notification.schema.js';
+import {
+  createNotificationSchema,
+  getNotificationParamsSchema
+} from '../../schemas/notification.schema.js';
 import { errorCodes } from '../utils/errorCodes.js';
 import { sendError } from '../utils/response.js';
 
@@ -41,7 +44,22 @@ const validateNotification = (req, res, next) => {
   return next();
 };
 
+const validateParams = (schema) => (req, res, next) => {
+  logger.info({ '[REQUEST PARAMS]': req.params });
+  const result = schema.safeParse(req.params);
+
+  if (!result.success) {
+    logger.info({ '[VALIDATION ISSUES]': result.error.issues });
+    const { statusHttp, response } = sendError(errorCodes.MISSING_REQUIRED_PARAMETER);
+    return res.status(statusHttp).json(response);
+  }
+
+  req.params = result.data;
+  return next();
+};
+
 export const validateRequestMiddleware = {
   createTemplate: () => validate(createTemplateSchema),
-  createNotification: () => validateNotification
+  createNotification: () => validateNotification,
+  getNotification: () => validateParams(getNotificationParamsSchema)
 };

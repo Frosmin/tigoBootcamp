@@ -18,7 +18,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@sonar/scan": "^4.4.0",
     "@tigo/error-code": "^1.0.20",
     "@tigo/logger": "^1.0.1",
     "@tigo/postgres-connector": "^1.1.0",
@@ -32,6 +31,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@sonar/scan": "^4.4.0",
     "@vitest/coverage-v8": "^4.0.7",
     "node-mocks-http": "^1.17.2",
     "vitest": "^4.0.7"

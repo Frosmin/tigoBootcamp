@@ -29,15 +29,17 @@ if (¿Tipo de consulta?) then (Estado por id)
     |API REST|
     :Validar parámetro id;
     if (¿Solicitud válida?) then (Sí)
-        :Buscar notificación e intentos\nen PostgreSQL;
+        :Buscar notificación en PostgreSQL;
         if (¿Notificación existente?) then (Sí)
+            :Consultar intentos ordenados\npor número ascendente;
             |Servicio interno emisor|
-            :Recibir HTTP 200 con id, canal,\ndestinatario, estado e intentos;
+            :Recibir HTTP 200 con recurso,\ncontador intentos e historialIntentos;
             note right
               Estados posibles:
               ENCOLADA
               ENVIADA
               FALLIDA
+              historialIntentos puede ser []
             end note
             stop
         else (No)

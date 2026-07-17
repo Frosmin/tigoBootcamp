@@ -5,6 +5,7 @@ vi.mock('@tigo/postgres-connector', () => ({ executeQuery: vi.fn() }));
 import { executeQuery } from '@tigo/postgres-connector';
 import {
   deleteNotificationAfterQueueFailure,
+  findNotificationById,
   findNotificationByIdempotencyKey,
   insertNotification
 } from '../../../src/repositories/notification.repository.js';
@@ -40,6 +41,16 @@ describe('notification.repository.js', () => {
     executeQuery.mockResolvedValue([{ id: 10 }]);
     await expect(findNotificationByIdempotencyKey('request-1')).resolves.toEqual({ id: 10 });
     expect(executeQuery.mock.calls[0][1]).toEqual(['request-1']);
+  });
+
+  it('finds a notification by id using a bigint parameter', async () => {
+    executeQuery.mockResolvedValue([{ id: '10', estado: 'ENCOLADA' }]);
+    await expect(findNotificationById('10')).resolves.toEqual({
+      id: '10',
+      estado: 'ENCOLADA'
+    });
+    expect(executeQuery.mock.calls[0][0]).toMatch(/WHERE id = \$1::bigint/);
+    expect(executeQuery.mock.calls[0][1]).toEqual(['10']);
   });
 
   it('deletes only the row created by the failed request', async () => {

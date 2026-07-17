@@ -47,6 +47,16 @@ export const findNotificationByIdempotencyKey = async (idempotencyKey) => {
   return rows[0];
 };
 
+export const findNotificationById = async (id) => {
+  const query = `
+    SELECT ${COLUMNS}
+    FROM notificacion
+    WHERE id = $1::bigint;
+  `;
+  const rows = await executeQuery(query, [id]);
+  return rows[0];
+};
+
 export const deleteNotificationAfterQueueFailure = async (id, idempotencyKey) => {
   const query = `
     DELETE FROM notificacion

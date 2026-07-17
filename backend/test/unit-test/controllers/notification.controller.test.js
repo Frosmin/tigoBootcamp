@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../src/services/notification.service.js', () => ({
-  createNotificationService: vi.fn()
+  createNotificationService: vi.fn(),
+  getNotificationService: vi.fn()
 }));
 
-import { createNotificationService } from '../../../src/services/notification.service.js';
-import { createNotificationController } from '../../../src/controllers/notification.controller.js';
+import {
+  createNotificationService,
+  getNotificationService
+} from '../../../src/services/notification.service.js';
+import {
+  createNotificationController,
+  getNotificationController
+} from '../../../src/controllers/notification.controller.js';
 import { errorCodes, setError } from '../../../src/utils/errorCodes.js';
 
 describe('notification.controller.js', () => {
@@ -57,6 +64,38 @@ describe('notification.controller.js', () => {
   it('returns 500 for an unexpected failure', async () => {
     createNotificationService.mockRejectedValue(new Error('unexpected'));
     await createNotificationController(req, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it('returns 200 with the notification state and attempt history', async () => {
+    const response = { ...notification, historialIntentos: [] };
+    getNotificationService.mockResolvedValue(response);
+
+    await getNotificationController({ params: { id: '9' } }, res);
+
+    expect(getNotificationService).toHaveBeenCalledWith('9');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(response);
+  });
+
+  it('returns 404 when the notification does not exist', async () => {
+    getNotificationService.mockRejectedValue(
+      setError('Notification not found', errorCodes.NOT_FOUND)
+    );
+
+    await getNotificationController({ params: { id: '999' } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({
+      error: { code: 'NF001', message: 'Not found' }
+    });
+  });
+
+  it('returns 500 when getting a notification fails unexpectedly', async () => {
+    getNotificationService.mockRejectedValue(new Error('database unavailable'));
+
+    await getNotificationController({ params: { id: '9' } }, res);
+
     expect(res.status).toHaveBeenCalledWith(500);
   });
 });

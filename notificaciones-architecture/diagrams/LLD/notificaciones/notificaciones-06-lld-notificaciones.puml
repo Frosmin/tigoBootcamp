@@ -63,13 +63,25 @@ else datos válidos
 end
 
 == Consultar  ==
-emisor -> validation : GET /notifications/{id} o GET /notifications?filtros
-validation -> controller : getById(id) o list(query)
-controller -> service : consultar
-service -> repositories : obtener detalle o página
-repositories -> db : SELECT notificaciones e intentos
-db --> repositories : resultado
-controller --> emisor : 200, 400 o 404
+emisor -> validation : GET /notifications/{id}
+validation -> validation : validar BIGINT positivo sin convertir a Number
+alt id inválido
+    validation --> emisor : 400 Bad Request
+else id válido
+    validation -> controller : getById(id)
+    controller -> service : obtener(id)
+    service -> repositories : buscar notificación
+    repositories -> db : SELECT notificación
+    alt notificación inexistente
+        service --> controller : error 404
+        controller --> emisor : 404 Not Found
+    else notificación existente
+        service -> repositories : buscar historial de intentos
+        repositories -> db : SELECT intentos ORDER BY numero
+        db --> repositories : intentos o lista vacía
+        controller --> emisor : 200 recurso + historialIntentos
+    end
+end
 
 == Reintentar  ==
 emisor -> validation : POST /notifications/{id}/retry

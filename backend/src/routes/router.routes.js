@@ -1,7 +1,10 @@
 import ultimateExpress from 'ultimate-express';
 import { healthController } from '../controllers/health.controller.js';
 import { createTemplateController } from '../controllers/template.controller.js';
-import { createNotificationController } from '../controllers/notification.controller.js';
+import {
+  createNotificationController,
+  getNotificationController
+} from '../controllers/notification.controller.js';
 import { validateRequestMiddleware } from '../middleware/validate.middleware.js';
 const { Router } = ultimateExpress;
 
@@ -14,6 +17,12 @@ router.post(
   '/templates',
   validateRequestMiddleware.createTemplate(),
   createTemplateController
+);
+
+router.get(
+  '/notifications/:id',
+  validateRequestMiddleware.getNotification(),
+  getNotificationController
 );
 
 router.post(

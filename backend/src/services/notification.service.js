@@ -2,10 +2,12 @@ import { logger } from '@tigo/logger';
 import { findTemplateById } from '../repositories/template.repository.js';
 import {
   deleteNotificationAfterQueueFailure,
+  findNotificationById,
   findNotificationByIdempotencyKey,
   insertNotification
 } from '../repositories/notification.repository.js';
 import { enqueueNotification } from '../queues/notification.queue.js';
+import { findAttemptsByNotificationId } from '../repositories/attempt.repository.js';
 import { errorCodes, setError } from '../utils/errorCodes.js';
 
 const haveSameKeys = (received, required) => {
@@ -66,4 +68,14 @@ export const createNotificationService = async (request, idempotencyKey) => {
   }
 
   return { notification: created, created: true };
+};
+
+export const getNotificationService = async (id) => {
+  const notification = await findNotificationById(id);
+  if (!notification) {
+    throw setError('Notification not found', errorCodes.NOT_FOUND);
+  }
+
+  const historialIntentos = await findAttemptsByNotificationId(id);
+  return { ...notification, historialIntentos };
 };
