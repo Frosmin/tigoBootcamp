@@ -6,7 +6,7 @@ import bodyParser from 'body-parser';
 import { httpLoggerMiddleware } from '@tigo/logger';
 import { initializeRedis } from '@tigo/redis-connector';
 import config from './utils/config.js';
-const app = ultimateExpress();
+const app = ultimateExpress({ threads: 0 });
 
 app.use(helmet());
 initializeRedis();

@@ -43,11 +43,7 @@ if (¿Solicitud válida?) then (Sí)
                     :Calcular demora con\nbackoff exponencial;
                     :Actualizar notificación\nestado = ENCOLADA;
                     :Publicar trabajo diferido\nen Redis;
-                    note right
-                      El worker consumirá el trabajo y
-                      continuará RF-7.1 aplicando throughput,
-                      idempotencia y el conector genérico.
-                    end note
+                    
                     |Servicio interno emisor|
                     :Recibir HTTP 202 Accepted\ncon id y estado ENCOLADA;
                     stop
