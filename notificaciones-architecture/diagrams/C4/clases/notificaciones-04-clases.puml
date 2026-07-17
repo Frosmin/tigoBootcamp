@@ -91,7 +91,7 @@ Notificacion "1" *-- "0..*" Intento
 Intento --> ResultadoIntento
 PoliticaReintentos ..> Notificacion
 
-package "API (ultimate-express + Zod)" {
+package "API" {
     class NotificacionController {
         +POST /api/v1/notifications(req, res): void
         +GET /api/v1/notifications/:id(req, res): void
