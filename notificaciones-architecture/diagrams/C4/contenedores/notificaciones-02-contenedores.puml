@@ -6,8 +6,8 @@ LAYOUT_LEFT_RIGHT()
 
 title Diagrama de Contenedores (C2) - Notificaciones
 
-Person(emisores, "Emisores", "Consumen la API REST de notificaciones y plantillas.")
-System_Ext(proveedor, "Proveedor de email y SMS", "Entrega mensajes por email y SMS.")
+Person(emisores, "Emisores", "Servicios internos autenticados previamente que consumen la API REST.")
+System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega mensajes por email y SMS.")
 
 System_Boundary(p07, "Microservicio P07 Notificaciones") {
     Container(api, "API REST", "Node.js 22 / ultimate-express / Zod", "Expone api para crear y consultar notificaciones, reintentar fallos y administrar plantillas.")
@@ -22,7 +22,7 @@ Rel(api, redis, "Encola envíos y reintentos; verifica idempotencia", "RESP")
 
 Rel(worker, redis, "Consume trabajos y aplica backoff, idempotencia y límite por minuto", "RESP")
 Rel(worker, db, "Lee plantillas y actualiza estados e intentos", "SQL")
-Rel(worker, proveedor, "Envía email o SMS mediante el conector", "Tigo Library / HTTPS")
+Rel(worker, proveedor, "Envía email o SMS mediante un conector genérico", "Librería de terceros / HTTPS")
 Rel(proveedor, worker, "Devuelve éxito o fallo", "Respuesta API")
 
 SHOW_LEGEND()

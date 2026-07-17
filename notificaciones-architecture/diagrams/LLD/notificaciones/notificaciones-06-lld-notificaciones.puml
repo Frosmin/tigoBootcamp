@@ -1,222 +1,84 @@
 @startuml notificaciones-06-lld-notificaciones
-' ============================================================
-' LLD - Diagrama de Secuencia (Bajo Nivel)
-' Módulo: API de Notificaciones
-' ============================================================
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam sequenceMessageAlign center
 skinparam sequence {
     ArrowColor #1168BD
-    ArrowFontColor #333333
     LifeLineBorderColor #1168BD
-    LifeLineBackgroundColor #D6E4F0
     ParticipantBorderColor #003865
     ParticipantBackgroundColor #003865
     ParticipantFontColor #FFFFFF
     ActorBorderColor #003865
-    ActorBackgroundColor #003865
-    BoxBorderColor #1168BD
-    BoxFontColor #003865
 }
-skinparam noteBackgroundColor #FFF3CD
-skinparam noteBorderColor #E0A800
 
-title LLD - API de Notificaciones (Node.js / ultimate-express / Zod)
+title LLD simple - API de Notificaciones
 
-actor "Servicio interno\nemisor" as emisor
-participant "Middleware de\nseguridad y validación" as mw
-participant "Controlador de\nNotificaciones" as controller
-
-box "API REST - Modulo de Notificaciones" #EAF2FB
-    participant "Servicio de\nNotificaciones" as svc
-    participant "Validador de\nplantilla y variables" as renderer
-    participant "Repositorio de\nPlantillas" as templateRepo
-    participant "Repositorio de\nNotificaciones e Intentos" as notificationRepo
-    participant "Control de\nIdempotencia" as idem
-    participant "Adaptador de\nCola" as queue
-    participant "Política de\nReintentos" as retryPolicy
-end box
-
+actor "Servicio interno" as emisor
+participant "Middleware\nde validación" as validation
+participant "Controlador" as controller
+participant "Servicio de\nNotificaciones" as service
+participant "Repositorios" as repositories
 database "PostgreSQL" as db
-participant "Redis" as redis
+participant "Cola e\nidempotencia" as queueAdapter
+queue "Redis" as redis
 
-autonumber "<b>[00]"
-
-== A. Crear notificación (RF-7.1) ==
-emisor -> mw : POST /api/v1/notifications\n(body, idempotencyKey)
-activate mw
-mw -> mw : valida autenticación, autorización\ny esquema Zod
-alt credenciales o entrada inválidas
-    mw --> emisor : 400/401/403 (error estandarizado)
-else solicitud valida
-    mw -> controller : create(req)
-    activate controller
-    controller -> svc : crear(command, idempotencyKey)
-    activate svc
-
-    svc -> templateRepo : findById(plantillaId)
-    activate templateRepo
-    templateRepo -> db : SELECT plantilla WHERE id=?
-    db --> templateRepo : plantilla | null
-    templateRepo --> svc : plantilla | null
-    deactivate templateRepo
-
+== Crear y encolar ==
+emisor -> validation : POST /api/v1/notifications
+validation -> validation : validar body con Zod
+alt datos inválidos
+    validation --> emisor : 400 Bad Request
+else datos válidos
+    validation -> controller : create(body)
+    controller -> service : crear(command)
+    service -> repositories : buscar plantilla
+    repositories -> db : SELECT plantilla
+    db --> repositories : plantilla o null
+    service -> service : validar canal y variables
     alt plantilla inexistente
-        svc --> controller : NOTIFICATION_TEMPLATE_NOT_FOUND
+        service --> controller : error 404
         controller --> emisor : 404 Not Found
-    else plantilla existente
-        svc -> renderer : validarVariables(plantilla, variables)
-        alt variables faltantes
-            renderer --> svc : error de validación
-            svc --> controller : MISSING_TEMPLATE_VARIABLES
-            controller --> emisor : 400 Bad Request
-        else variables completas
-            renderer --> svc : validación correcta
-            svc -> idem : reservar(idempotencyKey)
-            activate idem
-            idem -> redis : SET idem:{key} NX
-            redis --> idem : reservado | existente
-            idem --> svc : solicitud nueva | duplicada
-            deactivate idem
-
-            alt solicitud duplicada
-                svc -> notificationRepo : findByIdempotencyKey(key)
-                activate notificationRepo
-                notificationRepo -> db : SELECT notificación WHERE idem_key=?
-                db --> notificationRepo : notificación existente
-                notificationRepo --> svc : notificación existente
-                deactivate notificationRepo
-                svc --> controller : resultado previo
-                controller --> emisor : 200 OK (id y estado existentes)
-            else solicitud nueva
-                svc -> notificationRepo : save(estado=ENCOLADA, intentos=0)
-                activate notificationRepo
-                notificationRepo -> db : INSERT INTO notificaciones ...
-                db --> notificationRepo : notificacionId
-                notificationRepo --> svc : notificación creada
-                deactivate notificationRepo
-
-                svc -> queue : encolar(notificacionId)
-                activate queue
-                queue -> redis : LPUSH notifications notificacionId
-                redis --> queue : trabajo encolado
-                queue --> svc : ok
-                deactivate queue
-
-                svc --> controller : notificación creada
-                controller --> emisor : 202 Accepted (id, ENCOLADA)
-            end
+    else variables incompletas
+        service --> controller : error 400
+        controller --> emisor : 400 Bad Request
+    else solicitud válida
+        service -> queueAdapter : reservar idempotencyKey
+        queueAdapter -> redis : SET NX
+        alt solicitud duplicada
+            service -> repositories : obtener notificación existente
+            repositories -> db : SELECT notificación
+            controller --> emisor : 200 OK
+        else solicitud nueva
+            service -> repositories : guardar ENCOLADA
+            repositories -> db : INSERT notificación
+            service -> queueAdapter : encolar(notificacionId)
+            queueAdapter -> redis : publicar trabajo
+            controller --> emisor : 202 Accepted
         end
     end
-    deactivate svc
-    deactivate controller
-end
-deactivate mw
-
-== B. Consultar estado e historial (RF-7.3 / RF-7.5) ==
-group Estado por identificador
-    emisor -> mw : GET /api/v1/notifications/{id}
-    activate mw
-    mw -> controller : getById(id)
-    activate controller
-    controller -> svc : obtener(id)
-    activate svc
-    svc -> notificationRepo : findByIdWithAttempts(id)
-    notificationRepo -> db : SELECT notificación e intentos WHERE id=?
-    db --> notificationRepo : notificación con intentos | null
-    notificationRepo --> svc : resultado
-    alt notificación inexistente
-        svc --> controller : NOTIFICATION_NOT_FOUND
-        controller --> emisor : 404 Not Found
-    else notificación encontrada
-        svc --> controller : detalle y estado
-        controller --> emisor : 200 OK (ENCOLADA | ENVIADA | FALLIDA)
-    end
-    deactivate svc
-    deactivate controller
-    deactivate mw
 end
 
-group Historial filtrado y paginado
-    emisor -> mw : GET /api/v1/notifications?canal&estado&page&pageSize
-    activate mw
-    mw -> mw : valida filtros y paginación con Zod
-    alt filtros o paginación inválidos
-        mw --> emisor : 400 Bad Request
-    else parámetros válidos
-        mw -> controller : list(query)
-        activate controller
-        controller -> svc : listar(canal, estado, page, pageSize)
-        activate svc
-        svc -> notificationRepo : findPage(filtros, page, pageSize)
-        notificationRepo -> db : SELECT pagina + COUNT(*)\ncon filtros opcionales
-        db --> notificationRepo : elementos y total
-        notificationRepo --> svc : pagina
-        svc --> controller : pagina
-        controller --> emisor : 200 OK (elementos y metadatos)
-        deactivate svc
-        deactivate controller
-    end
-    deactivate mw
-end
+== Consultar (RF-7.3 / RF-7.5) ==
+emisor -> validation : GET /notifications/{id} o GET /notifications?filtros
+validation -> controller : getById(id) o list(query)
+controller -> service : consultar
+service -> repositories : obtener detalle o página
+repositories -> db : SELECT notificaciones e intentos
+db --> repositories : resultado
+controller --> emisor : 200, 400 o 404
 
-== C. Reintentar envío fallido (RF-7.4) ==
-emisor -> mw : POST /api/v1/notifications/{id}/retry
-activate mw
-mw -> mw : valida autenticación, autorización e id
-alt solicitud inválida o no autorizada
-    mw --> emisor : 400/401/403
-else solicitud valida
-    mw -> controller : retry(id)
-    activate controller
-    controller -> svc : reintentar(id)
-    activate svc
-    svc -> notificationRepo : findByIdWithAttempts(id)
-    notificationRepo -> db : SELECT notificación e intentos WHERE id=?
-    db --> notificationRepo : notificación | null
-    notificationRepo --> svc : resultado
-
-    alt notificación inexistente
-        svc --> controller : NOTIFICATION_NOT_FOUND
-        controller --> emisor : 404 Not Found
-    else estado ENVIADA
-        svc --> controller : ALREADY_DELIVERED
-        controller --> emisor : 409 Conflict
-    else estado ENCOLADA
-        svc --> controller : DELIVERY_ALREADY_PENDING
-        controller --> emisor : 409 Conflict
-    else estado FALLIDA
-        svc -> retryPolicy : puedeReintentar(notificacion)
-        alt máximo configurable alcanzado
-            retryPolicy --> svc : no permitido
-            svc --> controller : MAX_RETRIES_REACHED
-            controller --> emisor : 409 Conflict
-        else quedan intentos
-            retryPolicy --> svc : permitido
-            svc -> idem : reservar reintento activo
-            idem -> redis : SET retry:{id} NX
-            redis --> idem : reservado | existente
-            idem --> svc : resultado
-            alt reintento ya activo
-                svc --> controller : RETRY_ALREADY_SCHEDULED
-                controller --> emisor : 409 Conflict
-            else nuevo reintento
-                svc -> retryPolicy : calcularDemora(siguienteIntento)
-                retryPolicy --> svc : demora configurable
-                svc -> notificationRepo : updateEstado(id, ENCOLADA)
-                notificationRepo -> db : UPDATE notificaciones SET estado='ENCOLADA'
-                svc -> queue : encolarDiferido(id, demora)
-                queue -> redis : ZADD delayed:{timestamp} id
-                svc --> controller : reintento programado
-                controller --> emisor : 202 Accepted (id, ENCOLADA)
-            end
-        end
-    end
-    deactivate svc
-    deactivate controller
+== Reintentar (RF-7.4) ==
+emisor -> validation : POST /notifications/{id}/retry
+validation -> controller : retry(id)
+controller -> service : reintentar(id)
+service -> repositories : consultar estado e intentos
+service -> service : validar FALLIDA y máximo de intentos
+alt reintento permitido
+    service -> repositories : actualizar estado ENCOLADA
+    service -> queueAdapter : encolar con backoff
+    controller --> emisor : 202 Accepted
+else reintento no permitido
+    controller --> emisor : 404 o 409
 end
-deactivate mw
 
 
 @enduml

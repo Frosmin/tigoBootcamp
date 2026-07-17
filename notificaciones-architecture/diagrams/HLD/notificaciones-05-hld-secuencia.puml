@@ -1,117 +1,70 @@
 @startuml notificaciones-05-hld-secuencia
-' ============================================================
-' HLD - Diagrama de Secuencia (Alto Nivel)
-' Flujo integral del microservicio de Notificaciones
-' ============================================================
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam sequenceMessageAlign center
 skinparam sequence {
     ArrowColor #1168BD
-    ArrowFontColor #333333
     LifeLineBorderColor #1168BD
-    LifeLineBackgroundColor #D6E4F0
     ParticipantBorderColor #003865
     ParticipantBackgroundColor #003865
     ParticipantFontColor #FFFFFF
     ActorBorderColor #003865
-    ActorBackgroundColor #003865
-    BoxBorderColor #1168BD
-    BoxFontColor #003865
 }
-skinparam noteBackgroundColor #FFF3CD
-skinparam noteBorderColor #E0A800
 
-title HLD - Secuencia de notificaciones (API -> Worker -> Proveedor)
+title HLD simple - Flujo de notificaciones
 
-actor "Servicio interno\nemisor" as emisor
+actor "Servicio interno\n(autenticado previamente)" as emisor
+participant "API REST" as api
+database "PostgreSQL" as db
+queue "Redis" as redis
+participant "Worker de envíos" as worker
+participant "Proveedor genérico\nde email/SMS" as proveedor
 
-box "Microservicio P07 Notificaciones" #EAF2FB
-    participant "API REST" as api
-    database "PostgreSQL" as db
-    participant "Redis\nCola y coordinación" as redis
-    participant "Worker\nde envíos" as worker
-    participant "Tigo Library" as tigo
-end box
+== Solicitud ==
+emisor -> api : POST /api/v1/notifications
+api -> api : validar datos, plantilla y variables
 
-participant "Proveedor de\nemail/SMS" as proveedor
-
-autonumber "<b>[00]"
-
-== 1. Solicitud y encolado ==
-emisor -> api : POST /api/v1/notifications\n(canal, destinatario, plantillaId, variables, idempotencyKey)
-activate api
-api -> api : autentica, autoriza y valida entrada
-api -> db : consulta plantilla
-db --> api : plantilla | null
-api -> api : valida plantilla y variables
-
-alt solicitud inválida, plantilla inexistente o variables incompletas
-    api --> emisor : 400/401/403/404 (error estandarizado)
+alt solicitud inválida
+    api --> emisor : 400 o 404
 else solicitud válida
-    api -> redis : reserva idempotencyKey
-    redis --> api : reservada | existente
-    alt solicitud duplicada
-        api -> db : consulta notificación por idempotencyKey
-        db --> api : id y estado existentes
-        api --> emisor : 200 OK (id y estado existentes)
-    else solicitud nueva
-        api -> db : persiste notificación (ENCOLADA, intentos=0)
-        api -> redis : encola notificacionId
-        api --> emisor : 202 Accepted (id, ENCOLADA)
+    api -> db : guardar notificación ENCOLADA
+    api -> redis : encolar notificación
+    api --> emisor : 202 Accepted
+end
+
+== Entrega asíncrona ==
+redis -> worker : notificacionId
+worker -> db : obtener notificación y plantilla
+worker -> worker : controlar duplicados, throughput y renderizado
+worker -> proveedor : enviar mediante librería 
+proveedor --> worker : éxito o fallo
+
+alt envío exitoso
+    worker -> db : registrar intento y estado ENVIADA
+else fallo reintentable
+    worker -> db : registrar intento fallido
+    worker -> redis : programar reintento con backoff
+else fallo terminal
+    worker -> db : registrar intento y estado FALLIDA
+end
+
+== Consulta o reintento manual ==
+emisor -> api : GET estado/historial o POST /{id}/retry
+api -> db : consultar estado e intentos
+api -> redis : programar reintento si corresponde
+api --> emisor : 200, 202, 400, 404 o 409
+
+
+
+== Consulta o reintento manual ==
+emisor -> api : POST, GET, PUT, DELETE /api/v1/platilla
+api -> api : validar valores validos
+
+    alt solicitud inválida
+        api --> emisor : 400 o 404 datos no permitidos
+    else solicitud válida
+        api -> db : guardar, edita, elimina o deveulve plantilla
+        api --> emisor : 202 
     end
-end
-deactivate api
-
-== 2. Procesamiento asíncrono ==
-redis -> worker : entrega trabajo (notificacionId)
-activate worker
-worker -> db : obtiene notificación y plantilla
-db --> worker : datos de envío
-worker -> redis : verifica entrega previa y solicita cuota de throughput
-
-alt notificación ya entregada
-    worker -> worker : descarta trabajo duplicado
-else límite de throughput alcanzado
-    worker -> redis : reprograma trabajo sin consumir intento
-else envío permitido
-    worker -> worker : renderiza plantilla
-    worker -> tigo : enviar(canal, destinatario, contenido)
-    activate tigo
-    tigo -> proveedor : entrega email o SMS
-    proveedor --> tigo : éxito | fallo
-    tigo --> worker : resultado de entrega
-    deactivate tigo
-
-    alt envío exitoso
-        worker -> db : registra intento EXITOSO\ny actualiza estado=ENVIADA
-        worker -> redis : marca entrega completada
-    else fallo reintentable y quedan intentos
-        worker -> db : registra intento FALLIDO
-        worker -> redis : programa trabajo diferido\ncon backoff exponencial
-    else fallo terminal o máximo alcanzado
-        worker -> db : registra intento FALLIDO\ny actualiza estado=FALLIDA
-    end
-end
-deactivate worker
-
-== 3. Consulta y reintento manual ==
-emisor -> api : GET /api/v1/notifications/{id}\no GET /api/v1/notifications?canal&estado&page&pageSize
-activate api
-api -> db : consulta estado, intentos o historial paginado
-db --> api : resultado
-api --> emisor : 200 OK | 400/401/403/404
-deactivate api
-
-opt reintento de una notificación FALLIDA
-    emisor -> api : POST /api/v1/notifications/{id}/retry
-    activate api
-    api -> db : verifica estado e intentos
-    api -> redis : reserva reintento y programa backoff
-    api -> db : actualiza estado=ENCOLADA
-    api --> emisor : 202 Accepted | 400/401/403/404/409
-    deactivate api
-end
-
 
 @enduml

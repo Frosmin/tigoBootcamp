@@ -13,9 +13,6 @@ vi.mock('../../../src/controllers/health.controller.js', () => ({
 vi.mock('../../../src/controllers/template.controller.js', () => ({
   createTemplateController: 'createTemplateController'
 }));
-vi.mock('../../../src/middleware/auth.middleware.js', () => ({
-  authenticateBearer: 'authenticateBearer'
-}));
 vi.mock('../../../src/middleware/validate.middleware.js', () => ({
   validateRequestMiddleware: {
     createTemplate: vi.fn(() => 'createTemplateValidator')
@@ -29,7 +26,6 @@ describe('router.routes.js', () => {
     expect(mockRouter.get).toHaveBeenCalledWith('/health', 'healthController');
     expect(mockRouter.post).toHaveBeenCalledWith(
       '/templates',
-      'authenticateBearer',
       'createTemplateValidator',
       'createTemplateController'
     );

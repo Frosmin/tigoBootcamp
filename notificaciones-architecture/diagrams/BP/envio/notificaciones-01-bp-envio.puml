@@ -33,7 +33,7 @@ note right
 end note
 
 |API REST|
-:Validar autenticación, autorización\ny formato con Zod;
+:Validar formato y datos con Zod;
 
 if (¿Solicitud válida?) then (Sí)
     :Buscar plantilla en PostgreSQL;
@@ -65,7 +65,7 @@ if (¿Solicitud válida?) then (Sí)
         stop
     endif
 else (No)
-    :Rechazar solicitud inválida\no no autorizada Error;
+    :Rechazar solicitud inválida;
     |Servicio interno emisor|
     
     stop
@@ -82,8 +82,8 @@ else (No)
     :Solicitar permiso al limitador\nde throughput en Redis;
     if (¿Hay capacidad de envío?) then (Sí)
         :Renderizar plantilla;
-        :Invocar conector email/SMS\nde Tigo Library;
-        |Proveedor email/SMS|
+        :Invocar librería genérica\nde email/SMS;
+|Proveedor externo email/SMS|
         :Procesar entrega;
         :Devolver éxito o fallo;
         |Worker de envíos|

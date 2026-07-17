@@ -7,14 +7,14 @@ LAYOUT_LEFT_RIGHT()
 
 title Diagrama de Componentes (C3) - Notificaciones
 
-Person(emisores, "Emisores", "Clientes internos de la API.")
-System_Ext(proveedor, "Proveedor de email y SMS", "Entrega los mensajes solicitados.")
+Person(emisores, "Emisores", "Clientes internos autenticados antes de invocar la API.")
+System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega los mensajes solicitados.")
 ContainerDb(db, "PostgreSQL", "postgres", "Plantillas, notificaciones e intentos.")
 ContainerDb(redis, "Redis", "redis", "Cola, trabajos diferidos, idempotencia y throughput.")
 
 Container_Boundary(api, "API REST - Node.js / ultimate-express") {
     Component(routes, "Rutas y controladores", "ultimate-express", "Expone los endpoints /api/v1 de notificaciones y plantillas y genera respuestas estandarizadas.")
-    Component(validation, "Validación y seguridad", "Middleware / Zod / Helmet", "Valida body, params, query y headers antes de ejecutar cada caso de uso.")
+    Component(validation, "Validación de solicitudes", "Middleware / Zod", "Valida body, params y query antes de ejecutar cada caso de uso; no autentica usuarios.")
     Component(notificationService, "Servicio de notificaciones", "Módulo de aplicación", "Crea, consulta, filtra y solicita reintentos de notificaciones sin duplicados.")
     Component(templateService, "Servicio de plantillas", "Módulo de aplicación", "Crea, modifica y elimina plantillas; verifica nombre único por canal y variables requeridas.")
     Component(templateRenderer, "Validador y renderizador", "Módulo de dominio", "Comprueba que todas las variables estén presentes y genera el contenido final.")
@@ -28,7 +28,7 @@ Container_Boundary(worker, "Worker de envíos - Node.js") {
     Component(retryPolicy, "Política de reintentos", "Dominio", "Calcula el backoff exponencial y bloquea reintentos al alcanzar el máximo.")
     Component(rateLimiter, "Limitador de throughput", "Redis", "Aplica el máximo configurable de envíos por minuto.")
     Component(deliveryGuard, "Control de idempotencia", "Redis", "Evita entregas duplicadas y no permite reenviar una notificación ya enviada.")
-    Component(tigoConnector, "Conector de email/SMS", "Tigo Library", "Adapta los canales EMAIL y SMS al proveedor externo.")
+    Component(channelConnector, "Conector de email/SMS", "Librería genérica de terceros", "Adapta los canales EMAIL y SMS al proveedor externo.")
 }
 
 Rel(emisores, validation, "HTTPS / REST / JSON")
@@ -55,8 +55,8 @@ Rel(dispatchWorker, deliveryGuard, "Verifica entrega e idempotencia")
 Rel(retryPolicy, queueAdapter, "Programa trabajo diferido")
 Rel(rateLimiter, redis, "Actualiza contador", "RESP")
 Rel(deliveryGuard, redis, "Reserva o consulta clave", "RESP")
-Rel(dispatchWorker, tigoConnector, "Envía mensaje")
-Rel(tigoConnector, proveedor, "Entrega email o SMS", "HTTPS")
+Rel(dispatchWorker, channelConnector, "Envía mensaje")
+Rel(channelConnector, proveedor, "Entrega email o SMS", "HTTPS")
 
 
 

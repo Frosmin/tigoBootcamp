@@ -20,88 +20,88 @@ skinparam swimlane {
     TitleFontColor #003B70
 }
 
-|Servicio interno autorizado|
+|Servicio interno|
 start
 :Seleccionar operación\ncrear, actualizar o eliminar;
 
 if (¿Operación?) then (Crear)
     :Enviar nombre, canal, contenido\ny variables[]\nPOST /api/v1/templates;
     |API REST|
-    :Validar autenticación, autorización\ny datos con Zod;
+    :Validar datos con Zod;
     if (¿Datos válidos?) then (Sí)
         :Buscar nombre y canal\nen PostgreSQL;
         if (¿Nombre único por canal?) then (Sí)
             :Persistir nueva plantilla;
-            |Servicio interno autorizado|
+            |Servicio interno|
             :Recibir HTTP 201\ny plantilla creada;
             stop
         else (No)
             :Rechazar nombre duplicado;
-            |Servicio interno autorizado|
+            |Servicio interno|
             :Recibir HTTP 409;
             stop
         endif
     else (No)
-        :Rechazar datos o credenciales;
-        |Servicio interno autorizado|
-        :Recibir HTTP 400, 401 o 403;
+        :Rechazar datos inválidos;
+        |Servicio interno|
+        :Recibir HTTP 400;
         stop
     endif
 
 elseif (¿Operación?) then (Actualizar)
     :Enviar cambios\nPUT /api/v1/templates/{id};
     |API REST|
-    :Validar autenticación, autorización\ny datos con Zod;
+    :Validar id y datos con Zod;
     if (¿Solicitud válida?) then (Sí)
         :Buscar plantilla por id\nen PostgreSQL;
         if (¿Plantilla existente?) then (Sí)
             :Comprobar nombre único por canal\nexcluyendo la plantilla actual;
             if (¿Existe otro nombre igual\nen el canal?) then (Sí)
                 :Rechazar nombre duplicado;
-                |Servicio interno autorizado|
+                |Servicio interno|
                 :Recibir HTTP 409;
                 stop
             else (No)
                 :Persistir cambios;
-                |Servicio interno autorizado|
+                |Servicio interno|
                 :Recibir HTTP 200\ny plantilla actualizada;
                 stop
             endif
         else (No)
             :Rechazar plantilla inexistente;
-            |Servicio interno autorizado|
+            |Servicio interno|
             :Recibir HTTP 404;
             stop
         endif
     else (No)
-        :Rechazar datos o credenciales;
-        |Servicio interno autorizado|
-        :Recibir HTTP 400, 401 o 403;
+        :Rechazar datos inválidos;
+        |Servicio interno|
+        :Recibir HTTP 400;
         stop
     endif
 
 else (Eliminar)
     :Solicitar eliminación\nDELETE /api/v1/templates/{id};
     |API REST|
-    :Validar autenticación y autorización;
-    if (¿Solicitud autorizada?) then (Sí)
+    :Validar parámetro id;
+    if (¿Id válido?) then (Sí)
         :Buscar plantilla por id\nen PostgreSQL;
         if (¿Plantilla existente?) then (Sí)
             :Eliminar plantilla\nsegún la política del dominio;
     
-            |Servicio interno autorizado|
+            |Servicio interno|
             :Recibir HTTP 204;
             stop
         else (No)
             :Rechazar plantilla inexistente;
-            |Servicio interno autorizado|
+            |Servicio interno|
             :Recibir HTTP 404;
             stop
         endif
     else (No)
-        :Rechazar operación no autorizada;
-        |Servicio interno autorizado|
-        :Recibir HTTP 401 o 403;
+        :Rechazar id inválido;
+        |Servicio interno|
+        :Recibir HTTP 400;
         stop
     endif
 endif

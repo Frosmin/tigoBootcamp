@@ -27,7 +27,7 @@ start
 if (¿Tipo de consulta?) then (Estado por id)
     :Consultar notificación\nGET /api/v1/notifications/{id};
     |API REST|
-    :Validar autenticación, autorización\ny parámetro id;
+    :Validar parámetro id;
     if (¿Solicitud válida?) then (Sí)
         :Buscar notificación e intentos\nen PostgreSQL;
         if (¿Notificación existente?) then (Sí)
@@ -49,14 +49,14 @@ if (¿Tipo de consulta?) then (Estado por id)
         endif
     else (No)
         |Servicio interno emisor|
-        :Recibir HTTP 400, 401 o 403;
+        :Recibir HTTP 400;
         stop
     endif
 
 else (Historial)
     :Listar historial con filtros\nGET /api/v1/notifications?canal&estado&page&pageSize;
     |API REST|
-    :Validar autenticación, autorización,\nfiltros y paginación;
+    :Validar filtros y paginación;
     if (¿Filtros y paginación válidos?) then (Sí)
         :Consultar página en PostgreSQL\naplicando canal y estado opcionales;
         if (¿Existen resultados?) then (Sí)
@@ -70,7 +70,7 @@ else (Historial)
         endif
     else (No)
         |Servicio interno emisor|
-        :Recibir HTTP 400, 401 o 403;
+        :Recibir HTTP 400;
         stop
     endif
 endif

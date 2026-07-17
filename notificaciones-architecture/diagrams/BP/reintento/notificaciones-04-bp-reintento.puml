@@ -25,7 +25,7 @@ start
 :Solicitar reintento\nPOST /api/v1/notifications/{id}/retry;
 
 |API REST|
-:Validar autenticación, autorización\ny parámetro id;
+:Validar parámetro id;
 
 if (¿Solicitud válida?) then (Sí)
     :Buscar notificación e intentos\nen PostgreSQL;
@@ -46,7 +46,7 @@ if (¿Solicitud válida?) then (Sí)
                     note right
                       El worker consumirá el trabajo y
                       continuará RF-7.1 aplicando throughput,
-                      idempotencia y Tigo Library.
+                      idempotencia y el conector genérico.
                     end note
                     |Servicio interno emisor|
                     :Recibir HTTP 202 Accepted\ncon id y estado ENCOLADA;
@@ -77,7 +77,7 @@ if (¿Solicitud válida?) then (Sí)
     endif
 else (No)
     |Servicio interno emisor|
-    :Recibir HTTP 400, 401 o 403;
+    :Recibir HTTP 400;
     stop
 endif
 

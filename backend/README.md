@@ -73,6 +73,9 @@ reemplazar por el modelo y los endpoints reales del microservicio.
 6. Actualizar este README con la descripcion real del servicio.
 
 ## Arquitectura y convenciones
+- **Confianza de identidad**: los consumidores llegan autenticados por la
+  infraestructura previa. Este microservicio no valida tokens, usuarios ni
+  permisos y no incluye middleware de autenticacion/autorizacion.
 - **Capas**: la ruta valida con un middleware/schema; el controller orquesta la
   peticion; el service contiene la logica de negocio; el repository encapsula el
   SQL. El SQL nunca vive fuera de `src/repositories/`.
@@ -87,7 +90,7 @@ reemplazar por el modelo y los endpoints reales del microservicio.
   controllers los traducen con `sendError()` a `{ error: { code, message } }` y
   su HTTP correspondiente (via `@tigo/error-code`).
 - **Validacion**: cada endpoint tiene un schema `zod` `.strict()` que valida
-  body + params + headers (`x-clientid`, `x-traceid`).
+  body, params y query segun el contrato, sin verificar identidad.
 - **Logging**: usar `@tigo/logger`; los controllers miden el tiempo de ejecucion
   con `startTimer`/`endTimer`.
 - **ESM**: imports con extension `.js` explicita.

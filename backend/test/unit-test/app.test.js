@@ -18,7 +18,7 @@ vi.mock('@tigo/logger', () => ({ httpLoggerMiddleware: vi.fn(() => 'httpLoggerMi
 vi.mock('@tigo/redis-connector', () => ({ initializeRedis: vi.fn() }));
 vi.mock('../../src/routes/router.routes.js', () => ({ default: 'routerRoutes' }));
 vi.mock('../../src/utils/config.js', () => ({
-  default: { API_BASE_PATH: '/api/v1', APP_PASSWORD: 'test-password' }
+  default: { API_BASE_PATH: '/api/v1' }
 }));
 
 import '../../src/app.js';

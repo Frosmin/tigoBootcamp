@@ -7,20 +7,13 @@ LAYOUT_LEFT_RIGHT()
 
 title Diagrama de Contexto (C1) - Notificaciones
 
-Person(emisores,"Emisores", "Sistemas internos que gestionan plantillas, solicitan notificaciones y consultan su estado e historial.")
-
-
-' Person(Administrador, "Administrador", "Gestiona las plantillas")
+Person(emisores,"Emisores", "Sistemas internos autenticados antes de invocar el microservicio; gestionan plantillas, envíos y consultas.")
 System(notificaciones, "Microservicio P07 Notificaciones", "API backend que administra plantillas y entrega notificaciones por email o SMS con estados.")
 
-System_Ext(proveedor, "Proveedor de email y SMS", "Servicio externo que entrega correos electrónicos y mensajes SMS mediante Tigo Library.")
+System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega correos electrónicos y mensajes SMS.")
 
 Rel(emisores, notificaciones, "Gestiona plantillas, solicita envíos, consulta estado e historial y solicita reintentos", "HTTPS / REST / JSON")
-Rel(notificaciones, proveedor, "Solicita la entrega de email o SMS", "Tigo Library / HTTPS")
+Rel(notificaciones, proveedor, "Solicita la entrega de email o SMS", "Librería genérica de terceros / HTTPS")
 Rel(proveedor, notificaciones, "Devuelve el resultado de entrega", "Respuesta API")
-
-
-
-' Rel(Administrador, notificaciones, "Recibe confirmaciones de reservas y pagos", "Email / SMS")
 SHOW_LEGEND()
 @enduml

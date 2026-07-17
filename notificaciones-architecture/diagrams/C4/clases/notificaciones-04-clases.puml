@@ -169,7 +169,7 @@ package "Adaptadores e infraestructura" {
         +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
     }
 
-    class TigoEmailSmsConnector {
+    class ThirdPartyEmailSmsConnector {
         +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
     }
 
@@ -190,7 +190,7 @@ package "Adaptadores e infraestructura" {
     }
 }
 
-TigoEmailSmsConnector ..|> DeliveryConnector
+ThirdPartyEmailSmsConnector ..|> DeliveryConnector
 RedisQueueAdapter ..|> ColaNotificaciones
 
 NotificacionService ..> NotificacionRepository
