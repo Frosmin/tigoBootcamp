@@ -56,14 +56,14 @@ api --> emisor : 200, 202, 400, 404 o 409
 
 
 
-== Consulta o reintento manual ==
-emisor -> api : POST, GET, PUT, DELETE /api/v1/platilla
+== plantillas ==
+emisor -> api : POST, PUT, DELETE /api/v1/platilla
 api -> api : validar valores validos
 
     alt solicitud inválida
         api --> emisor : 400 o 404 datos no permitidos
     else solicitud válida
-        api -> db : guardar, edita, elimina o deveulve plantilla
+        api -> db : crea, edita o elimina 
         api --> emisor : 202 
     end
 
