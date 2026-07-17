@@ -29,7 +29,7 @@ alt datos inválidos
     validation --> emisor : 400 Bad Request
 else datos válidos
     validation -> controller : create(body)
-    controller -> service : crear(command)
+    controller -> service : crear
     service -> repositories : buscar plantilla
     repositories -> db : SELECT plantilla
     db --> repositories : plantilla o null
@@ -57,7 +57,7 @@ else datos válidos
     end
 end
 
-== Consultar (RF-7.3 / RF-7.5) ==
+== Consultar  ==
 emisor -> validation : GET /notifications/{id} o GET /notifications?filtros
 validation -> controller : getById(id) o list(query)
 controller -> service : consultar
@@ -66,7 +66,7 @@ repositories -> db : SELECT notificaciones e intentos
 db --> repositories : resultado
 controller --> emisor : 200, 400 o 404
 
-== Reintentar (RF-7.4) ==
+== Reintentar  ==
 emisor -> validation : POST /notifications/{id}/retry
 validation -> controller : retry(id)
 controller -> service : reintentar(id)

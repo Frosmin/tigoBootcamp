@@ -11,7 +11,7 @@ skinparam sequence {
     ActorBorderColor #003865
 }
 
-title LLD simple - Gestión de Plantillas
+title LLD - Gestión de Plantillas
 
 actor "Servicio interno" as emisor
 participant "Middleware\nde validación" as validation
@@ -20,16 +20,16 @@ participant "Servicio de\nPlantillas" as service
 participant "Repositorio de\nPlantillas" as repository
 database "PostgreSQL" as db
 
-== Crear (RF-7.2) ==
+== Crear ==
 emisor -> validation : POST /api/v1/templates
 validation -> validation : validar body con Zod
 alt datos inválidos
     validation --> emisor : 400 Bad Request
 else datos válidos
-    validation -> controller : create(body)
-    controller -> service : crear(command)
+    validation -> controller : create + body
+    controller -> service : crear
     service -> repository : guardar si nombre y canal son únicos
-    repository -> db : INSERT ... ON CONFLICT
+    repository -> db : consulata create
     alt nombre duplicado en el canal
         controller --> emisor : 409 Conflict
     else plantilla creada
@@ -37,21 +37,30 @@ else datos válidos
     end
 end
 
-== Actualizar (RF-7.2) ==
+== Actualizar  ==
 emisor -> validation : PUT /api/v1/templates/{id}
 validation -> controller : update(id, body)
-controller -> service : actualizar(id, command)
+controller -> service : actualizar(id, body)
 service -> repository : buscar y guardar cambios
-repository -> db : SELECT + UPDATE
-controller --> emisor : 200, 400, 404 o 409
+repository -> db : consulta update
+    alt Error al crear la actualizar la plantilla
+        controller --> emisor : 404 error 
+    else plantilla actualizada
+        controller --> emisor : 201 updated
+    end
 
-== Eliminar (RF-7.2) ==
+
+== Eliminar  ==
 emisor -> validation : DELETE /api/v1/templates/{id}
 validation -> controller : delete(id)
 controller -> service : eliminar(id)
 service -> repository : buscar y eliminar
-repository -> db : SELECT + DELETE
-controller --> emisor : 204, 400 o 404
+repository -> db : consulta delete
+    alt no se pudo eliminar la plantilla
+        controller --> emisor : 404 error 
+    else plantilla eliminada
+        controller --> emisor : 201 deleted
+    end
 
 
 

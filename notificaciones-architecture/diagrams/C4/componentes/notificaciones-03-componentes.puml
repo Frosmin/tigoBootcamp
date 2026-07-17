@@ -7,8 +7,8 @@ LAYOUT_LEFT_RIGHT()
 
 title Diagrama de Componentes (C3) - Notificaciones
 
-Person(emisores, "Emisores", "Clientes internos autenticados antes de invocar la API.")
-System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega los mensajes solicitados.")
+Person(emisores, "Emisores", "Clientes internos")
+System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico entrega los mensajes solicitados.")
 ContainerDb(db, "PostgreSQL", "postgres", "Plantillas, notificaciones e intentos.")
 ContainerDb(redis, "Redis", "redis", "Cola, trabajos diferidos, idempotencia y throughput.")
 
@@ -41,8 +41,8 @@ Rel(notificationService, notificationRepo, "Lee y persiste")
 Rel(notificationService, queueAdapter, "Encola envío o reintento")
 Rel(templateService, templateRepo, "Lee y persiste")
 
-Rel(notificationRepo, db, "SQL parametrizado")
-Rel(templateRepo, db, "SQL parametrizado")
+Rel(notificationRepo, db, "SQL")
+Rel(templateRepo, db, "SQL")
 Rel(queueAdapter, redis, "RESP")
 
 Rel(dispatchWorker, redis, "Consume trabajos", "RESP")
