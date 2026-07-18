@@ -1,21 +1,47 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const xadd = vi.fn();
-vi.mock('../../../src/infrastructure/redis.client.js', () => ({
-  getRedisClient: () => ({ xadd })
+const { Queue } = vi.hoisted(() => ({
+  Queue: vi.fn(function QueueMock(name, options) {
+    return { name, options, add: vi.fn() };
+  })
 }));
+vi.mock('bullmq', () => ({ Queue }));
 vi.mock('../../../src/utils/config.js', () => ({
-  default: { NOTIFICATION_STREAM: 'notifications:dispatch' }
+  default: {
+    NOTIFICATION_QUEUE: 'notification-delivery',
+    MAX_NOTIFICATION_ATTEMPTS: 5,
+    RETRY_BACKOFF_MS: 1000
+  }
 }));
 
-import { enqueueNotification } from '../../../src/queues/notification.queue.js';
+import {
+  createNotificationQueue,
+  enqueueOutboxEvent
+} from '../../../src/queues/notification.queue.js';
 
 describe('notification.queue.js', () => {
-  it('publishes only the notification id to the configured stream', async () => {
-    xadd.mockResolvedValue('1-0');
-    await expect(enqueueNotification(42)).resolves.toBe('1-0');
-    expect(xadd).toHaveBeenCalledWith(
-      'notifications:dispatch', '*', 'notificationId', '42'
+  beforeEach(() => vi.clearAllMocks());
+
+  it('creates the configured BullMQ queue with its injected connection', () => {
+    const connection = {};
+    expect(createNotificationQueue(connection)).toMatchObject({
+      name: 'notification-delivery', options: { connection }
+    });
+  });
+
+  it('publishes a deduplicated job with bounded retries and retention', async () => {
+    const queue = { add: vi.fn().mockResolvedValue({ id: 'outbox-7' }) };
+    const event = { id: '7', notificationId: '42' };
+    await enqueueOutboxEvent(queue, event);
+    expect(queue.add).toHaveBeenCalledWith(
+      'deliver-notification',
+      { outboxId: '7', notificationId: '42' },
+      expect.objectContaining({
+        jobId: 'outbox-7',
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 1000, jitter: 0.5 },
+        removeOnComplete: { age: 3600, count: 1000 }
+      })
     );
   });
 });

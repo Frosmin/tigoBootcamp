@@ -1,40 +1,18 @@
 import Redis from 'ioredis';
 import config from '../utils/config.js';
 
-let redisClient;
-
-export const initializeRedisClient = async () => {
-  if (redisClient) return redisClient;
-
-  const client = new Redis({
+const redisOptions = (maxRetriesPerRequest) => ({
     host: config.REDIS_HOST,
     port: config.REDIS_PORT,
     password: config.REDIS_PASSWORD,
-    lazyConnect: true,
-    maxRetriesPerRequest: 1
-  });
+    maxRetriesPerRequest
+});
 
-  try {
-    await client.connect();
-    await client.ping();
-    redisClient = client;
-    return redisClient;
-  } catch (error) {
-    client.disconnect();
-    throw error;
-  }
-};
+export const createQueueRedisConnection = () => new Redis(redisOptions(1));
 
-export const getRedisClient = () => {
-  if (!redisClient) {
-    throw new Error('Redis client is not initialized');
-  }
-  return redisClient;
-};
+export const createWorkerRedisConnection = () => new Redis(redisOptions(null));
 
-export const closeRedisClient = async () => {
-  if (!redisClient) return;
-  const client = redisClient;
-  redisClient = undefined;
-  await client.quit();
+export const closeRedisConnection = async (connection) => {
+  if (!connection || connection.status === 'end') return;
+  await connection.quit();
 };

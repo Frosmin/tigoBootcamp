@@ -1,4 +1,5 @@
 import { executeQuery } from '@tigo/postgres-connector';
+import { withTransaction } from '../infrastructure/db.transaction.js';
 
 const COLUMNS = `
   id,
@@ -27,14 +28,26 @@ export const insertNotification = async ({
     ON CONFLICT (idempotency_key) DO NOTHING
     RETURNING ${COLUMNS};
   `;
-  const rows = await executeQuery(query, [
-    canal,
-    destinatario,
-    plantillaId,
-    JSON.stringify(variables),
-    idempotencyKey
-  ]);
-  return rows[0];
+  return withTransaction(async (client) => {
+    const result = await client.query(query, [
+      canal,
+      destinatario,
+      plantillaId,
+      JSON.stringify(variables),
+      idempotencyKey
+    ]);
+    const created = result.rows[0];
+    if (!created) return undefined;
+
+    await client.query(
+      `
+        INSERT INTO notification_outbox (notification_id)
+        VALUES ($1::bigint);
+      `,
+      [created.id]
+    );
+    return created;
+  });
 };
 
 export const findNotificationByIdempotencyKey = async (idempotencyKey) => {
@@ -86,12 +99,4 @@ export const findNotificationsPage = async ({ canal, estado, limit, offset }) =>
     items,
     totalItems: Number(countRows[0]?.totalItems ?? 0)
   };
-};
-
-export const deleteNotificationAfterQueueFailure = async (id, idempotencyKey) => {
-  const query = `
-    DELETE FROM notificacion
-    WHERE id = $1::bigint AND idempotency_key = $2::varchar;
-  `;
-  await executeQuery(query, [id, idempotencyKey]);
 };

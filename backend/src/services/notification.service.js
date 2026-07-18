@@ -1,13 +1,10 @@
-import { logger } from '@tigo/logger';
 import { findTemplateById } from '../repositories/template.repository.js';
 import {
-  deleteNotificationAfterQueueFailure,
   findNotificationById,
   findNotificationByIdempotencyKey,
   findNotificationsPage,
   insertNotification
 } from '../repositories/notification.repository.js';
-import { enqueueNotification } from '../queues/notification.queue.js';
 import { findAttemptsByNotificationId } from '../repositories/attempt.repository.js';
 import { errorCodes, setError } from '../utils/errorCodes.js';
 
@@ -52,24 +49,6 @@ export const createNotificationService = async (request, idempotencyKey) => {
       throw setError('Idempotency key already used', errorCodes.RESOURCE_CONFLICT);
     }
     return { notification: existing, created: false };
-  }
-
-  try {
-    await enqueueNotification(created.id);
-  } catch (queueError) {
-    logger.error({
-      '[QUEUE ENQUEUE ERROR]': queueError.message,
-      '[NOTIFICATION ID]': created.id
-    });
-    try {
-      await deleteNotificationAfterQueueFailure(created.id, idempotencyKey);
-    } catch (compensationError) {
-      logger.error({
-        '[QUEUE COMPENSATION ERROR]': compensationError.message,
-        '[NOTIFICATION ID]': created.id
-      });
-    }
-    throw setError('Redis is unavailable', errorCodes.SERVICE_TEMPORARILY_UNAVAILABLE);
   }
 
   return { notification: created, created: true };

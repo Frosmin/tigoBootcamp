@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS intento CASCADE;
+DROP TABLE IF EXISTS notification_outbox CASCADE;
 DROP TABLE IF EXISTS notificacion CASCADE;
 DROP TABLE IF EXISTS plantilla CASCADE;
 
@@ -38,6 +39,17 @@ CREATE TABLE notificacion (
     CONSTRAINT ck_notificacion_variables_objeto CHECK (JSONB_TYPEOF(variables) = 'object')
 );
 
+CREATE TABLE notification_outbox (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    notification_id BIGINT NOT NULL REFERENCES notificacion(id) ON DELETE CASCADE,
+    published_at TIMESTAMP WITH TIME ZONE,
+    publish_attempts INTEGER NOT NULL DEFAULT 0 CHECK (publish_attempts >= 0),
+    available_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 
 CREATE TABLE intento (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -54,3 +66,6 @@ CREATE TABLE intento (
 CREATE INDEX idx_notificacion_plantilla_id ON notificacion(plantilla_id);
 CREATE INDEX idx_notificacion_estado ON notificacion(estado);
 CREATE INDEX idx_intento_notificacion_id ON intento(notificacion_id);
+CREATE INDEX idx_notification_outbox_pending
+    ON notification_outbox(available_at, id)
+    WHERE published_at IS NULL;

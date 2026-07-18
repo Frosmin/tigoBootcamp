@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tigo/postgres-connector', () => ({ executeQuery: vi.fn() }));
+const client = { query: vi.fn() };
+vi.mock('../../../src/infrastructure/db.transaction.js', () => ({
+  withTransaction: vi.fn((operation) => operation(client))
+}));
 
 import { executeQuery } from '@tigo/postgres-connector';
 import {
-  deleteNotificationAfterQueueFailure,
   findNotificationById,
   findNotificationByIdempotencyKey,
   findNotificationsPage,
@@ -24,18 +27,23 @@ describe('notification.repository.js', () => {
 
   it('inserts an ENCOLADA notification atomically by idempotency key', async () => {
     const row = { id: 10, ...input, estado: 'ENCOLADA', intentos: 0 };
-    executeQuery.mockResolvedValue([row]);
+    client.query
+      .mockResolvedValueOnce({ rows: [row] })
+      .mockResolvedValueOnce({ rows: [] });
 
     await expect(insertNotification(input)).resolves.toEqual(row);
-    const [query, params] = executeQuery.mock.calls[0];
+    const [query, params] = client.query.mock.calls[0];
     expect(query).toMatch(/ON CONFLICT \(idempotency_key\) DO NOTHING/);
     expect(query).toMatch(/plantilla_id AS "plantillaId"/);
     expect(params).toEqual(['EMAIL', 'user@example.com', 2, '{"nombre":"Ana"}', 'request-1']);
+    expect(client.query.mock.calls[1][0]).toMatch(/INSERT INTO notification_outbox/);
+    expect(client.query.mock.calls[1][1]).toEqual([10]);
   });
 
-  it('returns undefined on an idempotency conflict', async () => {
-    executeQuery.mockResolvedValue([]);
+  it('returns undefined on an idempotency conflict without another outbox event', async () => {
+    client.query.mockResolvedValue({ rows: [] });
     await expect(insertNotification(input)).resolves.toBeUndefined();
+    expect(client.query).toHaveBeenCalledOnce();
   });
 
   it('finds the existing notification by idempotency key', async () => {
@@ -52,13 +60,6 @@ describe('notification.repository.js', () => {
     });
     expect(executeQuery.mock.calls[0][0]).toMatch(/WHERE id = \$1::bigint/);
     expect(executeQuery.mock.calls[0][1]).toEqual(['10']);
-  });
-
-  it('deletes only the row created by the failed request', async () => {
-    executeQuery.mockResolvedValue([]);
-    await deleteNotificationAfterQueueFailure(10, 'request-1');
-    expect(executeQuery.mock.calls[0][0]).toMatch(/DELETE FROM notificacion/);
-    expect(executeQuery.mock.calls[0][1]).toEqual([10, 'request-1']);
   });
 
   it('returns a filtered page with its total count', async () => {

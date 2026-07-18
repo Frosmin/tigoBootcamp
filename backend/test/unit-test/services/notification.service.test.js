@@ -7,11 +7,7 @@ vi.mock('../../../src/repositories/notification.repository.js', () => ({
   insertNotification: vi.fn(),
   findNotificationById: vi.fn(),
   findNotificationByIdempotencyKey: vi.fn(),
-  findNotificationsPage: vi.fn(),
-  deleteNotificationAfterQueueFailure: vi.fn()
-}));
-vi.mock('../../../src/queues/notification.queue.js', () => ({
-  enqueueNotification: vi.fn()
+  findNotificationsPage: vi.fn()
 }));
 vi.mock('../../../src/repositories/attempt.repository.js', () => ({
   findAttemptsByNotificationId: vi.fn()
@@ -19,13 +15,11 @@ vi.mock('../../../src/repositories/attempt.repository.js', () => ({
 
 import { findTemplateById } from '../../../src/repositories/template.repository.js';
 import {
-  deleteNotificationAfterQueueFailure,
   findNotificationById,
   findNotificationByIdempotencyKey,
   findNotificationsPage,
   insertNotification
 } from '../../../src/repositories/notification.repository.js';
-import { enqueueNotification } from '../../../src/queues/notification.queue.js';
 import { findAttemptsByNotificationId } from '../../../src/repositories/attempt.repository.js';
 import {
   createNotificationService,
@@ -56,16 +50,14 @@ describe('notification.service.js', () => {
     vi.clearAllMocks();
     findTemplateById.mockResolvedValue(template);
     insertNotification.mockResolvedValue(notification);
-    enqueueNotification.mockResolvedValue('1-0');
   });
 
-  it('persists and enqueues a valid notification', async () => {
+  it('persists a valid notification and its outbox atomically', async () => {
     await expect(createNotificationService(request, 'request-1')).resolves.toEqual({
       notification,
       created: true
     });
     expect(insertNotification).toHaveBeenCalledWith({ ...request, idempotencyKey: 'request-1' });
-    expect(enqueueNotification).toHaveBeenCalledWith(9);
   });
 
   it('returns NF001 when the template does not exist', async () => {
@@ -88,7 +80,7 @@ describe('notification.service.js', () => {
     expect(insertNotification).not.toHaveBeenCalled();
   });
 
-  it('returns an identical existing notification without enqueuing again', async () => {
+  it('returns an identical existing notification without inserting another event', async () => {
     insertNotification.mockResolvedValue(undefined);
     findNotificationByIdempotencyKey.mockResolvedValue(notification);
 
@@ -96,7 +88,6 @@ describe('notification.service.js', () => {
       notification,
       created: false
     });
-    expect(enqueueNotification).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -109,25 +100,6 @@ describe('notification.service.js', () => {
 
     await expect(createNotificationService(request, 'request-1')).rejects.toMatchObject({
       errorCode: 'CF001'
-    });
-    expect(enqueueNotification).not.toHaveBeenCalled();
-  });
-
-  it('compensates the insert and returns SU001 when Redis fails', async () => {
-    enqueueNotification.mockRejectedValue(new Error('redis down'));
-
-    await expect(createNotificationService(request, 'request-1')).rejects.toMatchObject({
-      errorCode: 'SU001'
-    });
-    expect(deleteNotificationAfterQueueFailure).toHaveBeenCalledWith(9, 'request-1');
-  });
-
-  it('keeps SU001 when compensation also fails', async () => {
-    enqueueNotification.mockRejectedValue(new Error('redis down'));
-    deleteNotificationAfterQueueFailure.mockRejectedValue(new Error('database down'));
-
-    await expect(createNotificationService(request, 'request-1')).rejects.toMatchObject({
-      errorCode: 'SU001'
     });
   });
 
