@@ -11,15 +11,15 @@ import { findAttemptsByNotificationId } from '../repositories/attempt.repository
 import { errorCodes, setError } from '../utils/errorCodes.js';
 
 const haveSameKeys = (received, required) => {
-  const receivedKeys = Object.keys(received).sort();
-  const requiredKeys = [...required].sort();
+  const receivedKeys = Object.keys(received).sort((a, b) => a.localeCompare(b));
+  const requiredKeys = [...required].sort((a, b) => a.localeCompare(b));
   return receivedKeys.length === requiredKeys.length
     && receivedKeys.every((key, index) => key === requiredKeys[index]);
 };
 
 const sameVariables = (left, right) => {
-  const leftKeys = Object.keys(left).sort();
-  const rightKeys = Object.keys(right).sort();
+  const leftKeys = Object.keys(left).sort((a, b) => a.localeCompare(b));
+  const rightKeys = Object.keys(right).sort((a, b) => a.localeCompare(b));
   return leftKeys.length === rightKeys.length
     && leftKeys.every((key, index) => (
       key === rightKeys[index] && Object.is(left[key], right[key])
@@ -56,6 +56,10 @@ export const createNotificationService = async (request, idempotencyKey) => {
   try {
     await enqueueNotification(created.id);
   } catch (queueError) {
+    logger.error({
+      '[QUEUE ENQUEUE ERROR]': queueError.message,
+      '[NOTIFICATION ID]': created.id
+    });
     try {
       await deleteNotificationAfterQueueFailure(created.id, idempotencyKey);
     } catch (compensationError) {
