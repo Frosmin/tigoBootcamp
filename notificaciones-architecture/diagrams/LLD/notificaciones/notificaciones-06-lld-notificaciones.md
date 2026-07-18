@@ -1,52 +1,70 @@
-# LLD - API de Notificaciones
+# LLD - Notificaciones y worker
 
-**Stack:** Node.js, ultimate-express, Zod, PostgreSQL y Redis
-**Diagrama:** [notificaciones-06-lld-notificaciones.puml](notificaciones-06-lld-notificaciones.puml)
+**Stack:** Node.js 22, ultimate-express, Zod, PostgreSQL, ioredis,
+Redis Streams y Nodemailer.
 
-El módulo recibe solicitudes de servicios internos que ya fueron autenticados por
-la infraestructura anterior. P07 no valida tokens, usuarios ni permisos; únicamente
-valida los datos de entrada y las reglas de negocio.
+## API disponible
 
-## Endpoints
-
-| Método | Ruta | Resultado principal |
+| Método | Ruta | Resultado |
 |---|---|---|
-| `POST` | `/api/v1/notifications` | Valida la plantilla y sus variables, persiste en `ENCOLADA` y publica el trabajo. |
-| `GET` | `/api/v1/notifications/{id}` | Devuelve el recurso, el contador y `historialIntentos` ordenado. |
-| `GET` | `/api/v1/notifications?canal&estado&page&pageSize` | Devuelve el historial filtrado y paginado. |
-| `POST` | `/api/v1/notifications/{id}/retry` | Programa un reintento de una notificación `FALLIDA`. |
+| `POST` | `/api/v1/notifications` | Persiste `ENCOLADA` y publica `notificationId`. |
+| `GET` | `/api/v1/notifications/{id}` | Devuelve recurso e `historialIntentos`. |
 
-## Reglas
+La idempotencia reside en `notificacion.idempotency_key`. La misma clave con el
+mismo payload devuelve `200` sin volver a ejecutar `XADD`; un payload distinto
+devuelve `409 CF001`.
 
-- Estados permitidos: `ENCOLADA`, `ENVIADA` y `FALLIDA`.
-- El identificador se valida como `BIGINT` positivo y se conserva como texto
-  para no perder precisión en JavaScript.
-- Las variables faltantes bloquean el envío.
-- El header `Idempotency-Key` es obligatorio. La misma clave y payload devuelve
-  la notificación existente; reutilizarla con otro payload devuelve `409`.
-- Una notificación `ENVIADA` no se reenvía.
-- Los reintentos usan backoff exponencial hasta el máximo configurable.
-- El throughput máximo por minuto es configurable.
+## Consumo
 
-## Entrega
+- Stream: `notifications:dispatch`.
+- Grupo predeterminado: `notification-workers`, creado desde `0`.
+- Lectura: `XREADGROUP`; recuperación: `XAUTOCLAIM`.
+- Confirmación: `XACK` solo después de que el procesador haya persistido el
+  resultado o determinado que el trabajo puede descartarse con seguridad.
+- Los fallos inesperados permanecen pendientes para ser reclamados.
 
-El worker consume Redis, renderiza la plantilla y usa una librería genérica de
-terceros para comunicarse con el proveedor externo de email/SMS. Cada resultado
-se registra como un intento en PostgreSQL.
+## Estado e intentos
 
-La unicidad idempotente se garantiza en PostgreSQL y Redis Streams se usa solo
-como cola. Como ambas escrituras no comparten una transacción, la API elimina de
-forma compensatoria la notificación nueva si falla `XADD`. Una evolución de mayor
-garantía debería usar un transactional outbox y un publicador independiente.
+El worker solo entrega filas `ENCOLADA`. `recordDeliveryAttempt` usa una única
+sentencia SQL con CTE para incrementar `intentos`, actualizar `estado` y
+`next_attempt_at`, e insertar el historial con el mismo número de intento.
 
-## Errores esperados
+| Resultado | Estado | Acción adicional |
+|---|---|---|
+| Éxito | `ENVIADA` | Marca `delivered` antes de persistir. |
+| Fallo reintentable | `ENCOLADA` | Guarda `next_attempt_at` y hace `ZADD`. |
+| Fallo terminal o máximo | `FALLIDA` | No vuelve a programar. |
+| Sin throughput | sin cambio | Difiere sin consumir intento. |
 
-| HTTP | Uso |
-|---|---|
-| `400` | Datos, filtros, id o variables inválidos. |
-| `404` | Plantilla o notificación inexistente. |
-| `409` | Duplicidad o reintento no permitido. |
-| `500/503` | Falla interna o dependencia no disponible. |
+El backoff predeterminado es 30 y 60 segundos, con 3 intentos totales y tope
+configurable de 5 minutos.
 
-No se definen respuestas `401` o `403`, porque autenticación y autorización están
-fuera del alcance del microservicio.
+## Entrega por canal
+
+- **EMAIL:** Gmail SMTP mediante Nodemailer, credenciales solo por variables de
+  entorno y `Message-ID` determinista.
+- **SMS:** conector preparado sin proveedor. Produce el error terminal
+  `SMS_PROVIDER_NOT_CONFIGURED`.
+
+Timeouts/conexión y SMTP 4xx se clasifican como reintentables. Autenticación,
+destinatario inválido, SMTP 5xx, plantilla inválida y SMS no configurado son
+terminales.
+
+## Coordinación Redis
+
+- Lock por notificación con `SET NX PX` y liberación Lua validando el token.
+- Marca temporal `notification:delivered:{id}` (7 días por defecto) para
+  recuperar el caso en que SMTP aceptó el correo pero falló la escritura
+  PostgreSQL posterior, sin acumular claves indefinidamente.
+- Límite fijo por minuto separado para EMAIL y SMS.
+- Sorted set `notifications:delayed`; un script Lua elimina y publica los
+  trabajos vencidos de forma indivisible.
+
+## Limitaciones
+
+PostgreSQL, Redis y SMTP no forman una transacción atómica. Estas defensas
+reducen fuertemente duplicados, pero no permiten garantizar exactly-once ante un
+corte entre la aceptación SMTP y la marca `delivered`. El siguiente nivel de
+robustez para la publicación API es transactional outbox. Antes de permitir
+editar plantillas se debe guardar un snapshot o bloquear cambios con trabajos
+`ENCOLADA`.

@@ -11,6 +11,11 @@ services:
       POSTGRES_PASSWORD: postgres123
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mydatabase"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:8-alpine
@@ -26,6 +31,27 @@ services:
       - "redis123"
       - --appendonly
       - "yes"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build: .
+    container_name: notification-worker
+    restart: unless-stopped
+    command: ["node", "--require", "./opentelemetry.js", "./worker.js"]
+    env_file:
+      - .env
+    environment:
+      P_DB_HOST: db
+      REDIS_HOST: redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:

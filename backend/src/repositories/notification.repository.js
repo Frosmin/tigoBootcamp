@@ -57,6 +57,26 @@ export const findNotificationById = async (id) => {
   return rows[0];
 };
 
+export const findNotificationForDelivery = async (id) => {
+  const query = `
+    SELECT
+      n.id,
+      n.canal,
+      n.destinatario,
+      n.variables,
+      n.estado,
+      n.intentos,
+      n.next_attempt_at AS "nextAttemptAt",
+      p.nombre AS "templateName",
+      p.contenido AS "templateContent"
+    FROM notificacion AS n
+    INNER JOIN plantilla AS p ON p.id = n.plantilla_id
+    WHERE n.id = $1::bigint;
+  `;
+  const rows = await executeQuery(query, [id]);
+  return rows[0];
+};
+
 export const deleteNotificationAfterQueueFailure = async (id, idempotencyKey) => {
   const query = `
     DELETE FROM notificacion

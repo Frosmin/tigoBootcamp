@@ -1,270 +1,133 @@
-# tigo.micro.template
+# P07 Notificaciones
 
-Template base para microservicios Node.js de Tigo Money. Provee la estructura,
-convenciones y configuracion base (incluye `Dockerfile`) listas para clonar y
-empezar un nuevo servicio.
+Microservicio Node.js para crear plantillas, registrar notificaciones de forma
+idempotente, consultar su estado y entregarlas de manera asíncrona.
 
-Incluye un recurso de ejemplo (`example`) sobre PostgreSQL con dos operaciones
-—insertar y obtener por id— que demuestran el patron
-`route -> middleware(zod) -> controller -> service -> repository`. Se debe
-reemplazar por el modelo y los endpoints reales del microservicio.
+## Componentes
 
-## Tabla de contenidos
-- Stack
-- Estructura del proyecto
-- Como crear un nuevo servicio a partir del template
-- Arquitectura y convenciones
-- Modelo de datos de ejemplo
-- Endpoints de ejemplo
-- Variables de entorno
-- Ejecucion local
-- Scripts
-- Testing
-- Docker
+- **API REST:** valida la solicitud, persiste la notificación en PostgreSQL y
+  publica su identificador en Redis Streams.
+- **Worker:** consume el stream mediante consumer groups, renderiza la plantilla,
+  aplica límites por canal, entrega el mensaje y persiste el intento y el estado.
+- **PostgreSQL:** fuente de verdad para plantillas, notificaciones, idempotencia e
+  historial de intentos.
+- **Redis:** stream principal, reintentos diferidos, locks, marca de entrega y
+  limitadores de throughput.
 
-## Stack
-- Node.js 22 (ESM, `"type": "module"`)
-- `ultimate-express` como framework HTTP
-- `zod` para validacion de esquemas
-- `helmet` + CSP para hardening
-- `express-prom-bundle` para metricas Prometheus (`/metrics`)
-- `@tigo/postgres-connector` para acceso a PostgreSQL
-- `@tigo/logger`, `@tigo/redis-connector`, `@tigo/error-code` (registry interno)
-- `vitest` para pruebas unitarias y cobertura
+## Endpoints implementados
 
-## Estructura del proyecto
-```
-.
-├── index.js                  # Bootstrap: carga .env, inicializa la BD y levanta el server
-├── src/
-│   ├── app.js                # Configuracion de la app (middlewares, seguridad, rutas)
-│   ├── routes/
-│   │   └── router.routes.js   # Definicion de endpoints
-│   ├── controllers/          # Orquestan request/response, delegan al service
-│   ├── services/             # Logica de negocio
-│   ├── repositories/         # Acceso a datos (SQL parametrizado)
-│   ├── middleware/
-│   │   └── validate.middleware.js  # Validacion de request con zod
-│   └── utils/
-│       ├── config.js          # Lectura centralizada de variables de entorno
-│       ├── constants.js       # Constantes de la app
-│       ├── errorCodes.js      # Catalogo de codigos de error + setError()
-│       └── response.js        # sendError(): respuesta de error homogenea
-├── schemas/                  # Esquemas zod por endpoint
-├── test/unit-test/           # Pruebas unitarias (espeja la estructura de src/)
-├── Dockerfile                # Imagen de produccion (con OpenTelemetry)
-├── vitest.config.js
-├── .npmrc                    # Registry interno @tigo
-└── .env.example              # Plantilla de variables de entorno
-```
-
-## Como crear un nuevo servicio a partir del template
-1. Clonar/copiar este repositorio con el nombre del nuevo servicio
-   (`tigo.micro.<dominio>.<funcion>`).
-2. Actualizar `package.json`: `name`, `description` y `repository.url`.
-3. Definir el `API_BASE_PATH` en `.env` y en `src/utils/config.js`.
-4. Reemplazar el recurso de ejemplo por el modelo real:
-   - Crear la tabla en la base de datos.
-   - Ajustar los schemas en `schemas/`.
-   - Ajustar el repositorio (`src/repositories/`), el service y el controller.
-   - Registrar los endpoints en `src/routes/router.routes.js` y su validacion
-     en `src/middleware/validate.middleware.js`.
-5. Escribir las pruebas unitarias en `test/unit-test/` (meta de cobertura: 80%).
-6. Actualizar este README con la descripcion real del servicio.
-
-## Arquitectura y convenciones
-- **Confianza de identidad**: los consumidores llegan autenticados por la
-  infraestructura previa. Este microservicio no valida tokens, usuarios ni
-  permisos y no incluye middleware de autenticacion/autorizacion.
-- **Capas**: la ruta valida con un middleware/schema; el controller orquesta la
-  peticion; el service contiene la logica de negocio; el repository encapsula el
-  SQL. El SQL nunca vive fuera de `src/repositories/`.
-- **SQL seguro**: todas las consultas usan parametros (`$1, $2, ...`), nunca
-  interpolacion de strings. Los parametros se tipan explicitamente
-  (`$4::numeric`, `$6::date`, ...) para que Postgres no infiera el tipo desde el
-  literal por defecto de un `COALESCE` (evita errores como `invalid input syntax
-  for type integer` al enviar decimales).
-- **Config centralizada**: no leer `process.env` fuera de `src/utils/config.js`
-  (las librerias `@tigo/*` leen sus propias variables internamente).
-- **Errores**: en los services lanzar `setError(mensaje, errorCodes.XXX)`; los
-  controllers los traducen con `sendError()` a `{ error: { code, message } }` y
-  su HTTP correspondiente (via `@tigo/error-code`).
-- **Validacion**: cada endpoint tiene un schema `zod` `.strict()` que valida
-  body, params y query segun el contrato, sin verificar identidad.
-- **Logging**: usar `@tigo/logger`; los controllers miden el tiempo de ejecucion
-  con `startTimer`/`endTimer`.
-- **ESM**: imports con extension `.js` explicita.
-
-## Crear una notificacion
-
-`POST /api/v1/notifications` crea una notificacion en estado `ENCOLADA` y
-publica su identificador en el Redis Stream configurado por
-`NOTIFICATION_STREAM`.
-
-Headers requeridos:
-
-- `Content-Type: application/json`
-- `Idempotency-Key`: clave de 1 a 128 caracteres
-
-Body:
-
-```json
-{
-  "canal": "EMAIL",
-  "destinatario": "cliente@example.com",
-  "plantillaId": 1,
-  "variables": {
-    "nombre": "Ana",
-    "total": 125.5,
-    "confirmado": true
-  }
-}
-```
-
-El canal debe coincidir con la plantilla y las claves de `variables` deben ser
-exactamente las declaradas por ella. EMAIL valida correo y SMS exige formato
-E.164. Una solicitud nueva devuelve `202`; repetir la misma clave y payload
-devuelve el recurso existente con `200`; reutilizar la clave con otro payload
-devuelve `409`.
-
-La idempotencia se garantiza en PostgreSQL. Redis Streams se usa como cola y,
-si `XADD` falla, la API intenta eliminar compensatoriamente la fila nueva. Una
-evolucion con garantia atomica entre ambas dependencias requeriria un
-transactional outbox.
-
-## Consultar una notificacion
-
-`GET /api/v1/notifications/{id}` devuelve `200` con el recurso completo, su
-contador `intentos` y el arreglo `historialIntentos` ordenado por `numero`.
-Mientras el worker no haya procesado una notificacion recién creada, su estado
-es `ENCOLADA`, el contador vale `0` y el historial es `[]`.
-
-Un identificador inválido devuelve `400 BR001` y una notificación inexistente
-devuelve `404 NF001`. El identificador se valida como `BIGINT` positivo sin
-convertirlo a `Number`, para evitar pérdida de precisión.
-
-## Modelo de datos de ejemplo
-Tabla `example` (crear en la base de datos antes de usar los endpoints):
-
-```sql
-CREATE TABLE example (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description VARCHAR(500),
-    quantity INTEGER NOT NULL DEFAULT 0
-        CHECK (quantity >= 0),
-    price NUMERIC(12, 2) NOT NULL DEFAULT 0
-        CHECK (price >= 0),
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    registration_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-| Columna | Tipo | Notas |
+| Método | Ruta | Resultado |
 |---|---|---|
-| `id` | `BIGINT` identity | PK, gestionado por la BD |
-| `name` | `VARCHAR(100)` | obligatorio |
-| `description` | `VARCHAR(500)` | opcional |
-| `quantity` | `INTEGER` | default `0`, `>= 0` |
-| `price` | `NUMERIC(12,2)` | default `0`, `>= 0` |
-| `active` | `BOOLEAN` | default `TRUE` |
-| `registration_date` | `DATE` | default `CURRENT_DATE` |
-| `created_at` | `TIMESTAMPTZ` | gestionado por la BD |
-| `updated_at` | `TIMESTAMPTZ` | gestionado por la BD |
+| `POST` | `/api/v1/templates` | Crea una plantilla. |
+| `POST` | `/api/v1/notifications` | Crea y encola una notificación (`202`) o devuelve el duplicado idéntico (`200`). |
+| `GET` | `/api/v1/notifications/:id` | Devuelve la notificación y su historial de intentos. |
+| `GET` | `/health` | Estado del proceso API. |
 
-## Endpoints de ejemplo
-Base: `http://localhost:${PORT}${API_BASE_PATH}` (con el `.env.example`:
-`http://localhost:3050/v1`). Headers en los endpoints del recurso:
-`X-ClientId` (obligatorio), `X-traceId` (opcional), `Content-Type: application/json`.
+Los endpoints de historial paginado, retry manual y actualización/eliminación de
+plantillas corresponden a los siguientes puntos de implementación.
 
-| Metodo | Ruta | Descripcion |
-|---|---|---|
-| `GET` | `/health` | Health check (`{ "status": "UP" }`) |
-| `POST` | `/examples` | Inserta un registro y lo devuelve (201) |
-| `GET` | `/examples/:id` | Obtiene un registro por id (404 si no existe) |
+## Worker de entrega
 
-Insertar un registro:
+El worker usa `XREADGROUP` sobre `notifications:dispatch`. El grupo se crea desde
+`0`, los pendientes abandonados se recuperan con `XAUTOCLAIM` y un mensaje solo
+se confirma con `XACK` después de persistir su resultado. Los reintentos se
+guardan en el sorted set `notifications:delayed`; un promotor Lua mueve los
+trabajos vencidos al stream sin bloquear al worker.
+
+Valores predeterminados:
+
+- 3 intentos totales.
+- Backoff de 30 y 60 segundos tras el primer y segundo fallo, con tope de 5
+  minutos.
+- 60 permisos por minuto para EMAIL y 60 para SMS.
+
+Los fallos de conexión, timeout y SMTP 4xx son reintentables. Autenticación,
+destinatario inválido, SMTP 5xx y plantilla inválida son terminales. Como aún no
+se definió un proveedor SMS, un SMS se registra una sola vez como `FALLIDO` con
+detalle `SMS_PROVIDER_NOT_CONFIGURED` y la notificación pasa a `FALLIDA`.
+
+EMAIL se entrega mediante Nodemailer y Gmail SMTP. Se usa un `Message-ID`
+determinista por notificación para reducir duplicados. Gmail requiere una cuenta
+con verificación en dos pasos y una App Password; la contraseña no debe
+guardarse en Git. Consulta [App Passwords de Google](https://support.google.com/accounts/answer/185833)
+y [SMTP de Nodemailer](https://nodemailer.com/smtp).
+
+## Base de datos
+
+Para una instalación nueva, ejecutar `tablas.sql`. Este archivo recrea las
+tablas y elimina los datos existentes.
+
+Para actualizar una base que ya contiene datos, ejecutar solamente:
+
 ```bash
-curl --location 'http://localhost:3050/v1/examples' \
---header 'X-ClientId: MI-TIGO' \
---header 'X-traceId: 1' \
---header 'Content-Type: application/json' \
---data '{
-  "name": "Producto A",
-  "description": "Descripcion opcional",
-  "quantity": 10,
-  "price": 99.90,
-  "active": true,
-  "registration_date": "2026-07-14"
-}'
+psql "$P_DB_CONNECTION_STRING" -f migrations/001_worker_delivery.sql
 ```
 
-Obtener el registro insertado (reemplazar `1` por el `id` retornado):
-```bash
-curl --location 'http://localhost:3050/v1/examples/1' \
---header 'X-ClientId: MI-TIGO' \
---header 'X-traceId: 1'
-```
-
-> Los campos `description`, `quantity`, `price`, `active` y `registration_date`
-> son opcionales: si se omiten, se aplican los valores por defecto de la tabla.
-> El `POST` devuelve el registro completo con `id`, `created_at` y `updated_at`.
+La migración añade `next_attempt_at` y refuerza el historial numerado sin borrar
+notificaciones existentes. El worker actualiza el contador/estado y registra el
+intento en una única sentencia SQL.
 
 ## Variables de entorno
 
-| Variable | Requerida | Ejemplo |
-|---|---|---|
-| `PORT` | Si | `3050` |
-| `API_BASE_PATH` | Si | `/v1` |
-| `P_DB_HOST` | Si | `localhost` |
-| `P_DB_PORT` | Si | `5432` |
-| `P_DB_NAME` | Si | `mydatabase` |
-| `P_DB_USER` | Si | `postgres` |
-| `P_DB_PASSWORD` | Si | `postgres123` |
-| `P_DB_MAX_CONNECTIONS` | No | `10` |
-| `P_DB_CONNECTION_STRING` | No | `postgresql://user:pass@host:5432/db` (tiene prioridad) |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Si (`ioredis`) | ver `.env.example` |
-| `NOTIFICATION_STREAM` | No | `notifications:dispatch` |
+Copiar `.env.example` a `.env`. Las variables principales son:
 
-Copiar `.env.example` a `.env` y completar los valores.
+| Variable | Predeterminado / uso |
+|---|---|
+| `P_DB_*` | Conexión PostgreSQL usada por `@tigo/postgres-connector`. |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Conexión Redis usada por `ioredis`. |
+| `NOTIFICATION_STREAM` | `notifications:dispatch`. |
+| `NOTIFICATION_DELAYED_SET` | `notifications:delayed`. |
+| `NOTIFICATION_CONSUMER_GROUP` | `notification-workers`. |
+| `WORKER_CLAIM_IDLE_MS` | `30000`. |
+| `WORKER_LOCK_TTL_MS` | `180000`. Debe superar el timeout máximo de entrega. |
+| `DELIVERED_MARK_TTL_MS` | `604800000` (7 días); evita crecimiento ilimitado de Redis. |
+| `MAX_DELIVERY_ATTEMPTS` | `3`. |
+| `RETRY_BASE_DELAY_MS` | `30000`. |
+| `RETRY_MAX_DELAY_MS` | `300000`. |
+| `EMAIL_MAX_PER_MINUTE` | `60`. |
+| `SMS_MAX_PER_MINUTE` | `60`. |
+| `SMTP_USER` | Cuenta Gmail. |
+| `SMTP_APP_PASSWORD` | App Password; secreto obligatorio del worker. |
+| `SMTP_FROM` | Remitente del correo. |
+| `SMTP_MESSAGE_ID_DOMAIN` | Dominio usado en el `Message-ID`. |
+| `SMTP_*_TIMEOUT_MS` | Timeouts de conexión, saludo y socket (30 s, 30 s y 60 s). |
 
-> Redis se inicializa antes de abrir el puerto HTTP y se usa mediante `ioredis`.
+## Ejecución
 
-## Ejecucion local
-1. Instalar dependencias (requiere acceso al registry interno `@tigo`):
 ```bash
 npm install
+npm start          # API
+npm run worker     # worker, en otro proceso
+npm test
+npm run coverage
 ```
-2. Configurar `.env` a partir de `.env.example`.
-3. Crear la tabla `example` en la base de datos (ver [Modelo de datos de ejemplo](#modelo-de-datos-de-ejemplo)).
-4. Ejecutar (queda escuchando en `http://localhost:${PORT}`, ej. `3050`):
+
+Con Docker Compose, PostgreSQL, Redis y el worker se levantan con:
+
 ```bash
-npm run dev    # modo watch
-npm start      # modo normal
+docker compose up --build
 ```
 
-## Scripts
-- `npm start`: ejecuta `node index.js`.
-- `npm run dev`: ejecuta `node --watch index.js`.
-- `npm test`: pruebas unitarias con Vitest.
-- `npm run coverage`: pruebas unitarias con cobertura.
+La API puede ejecutarse localmente con `npm start`. Para ejecutar también la API
+en Compose debe añadirse el servicio correspondiente o usarse el contenedor de
+la imagen con su comando predeterminado.
 
-## Testing
-- Pruebas unitarias en `test/unit-test/` con Vitest, espejando la estructura de `src/`.
-- El template trae **un test de ejemplo por capa** (repository, service, controller,
-  middleware, route, app); ampliar la cobertura al implementar el servicio real.
-- El acceso a BD se mockea (`@tigo/postgres-connector`); no se requiere una base
-  real para correr las pruebas.
-- Cobertura minima esperada del proyecto: `85%`.
-- Ejecutar: `npm run coverage`.
+## Validación manual
 
-## Docker
-Imagen de produccion definida en `Dockerfile` (Node 22 slim, usuario no root,
-instrumentacion OpenTelemetry). Build y ejecucion local:
-```bash
-docker build -t tigo.micro.template .
-docker run --rm -p 3050:3050 --env-file .env tigo.micro.template
-```
-El puerto interno lo define `PORT`; ajusta el mapeo `-p host:PORT` segun tu `.env`.
+1. Crear una plantilla EMAIL cuyo contenido tenga variables `{{nombre}}`.
+2. Crear la notificación con `POST /api/v1/notifications` y comprobar
+   `estado: "ENCOLADA"`.
+3. Iniciar `npm run worker` con PostgreSQL, Redis y Gmail configurados.
+4. Consultar `GET /api/v1/notifications/:id` hasta observar `ENVIADA`,
+   `intentos: 1` y un intento `EXITOSO`.
+
+## Garantías y limitaciones
+
+- PostgreSQL y Redis no comparten una transacción. La API usa compensación si
+  falla `XADD`; una evolución más robusta requiere transactional outbox.
+- SMTP tampoco ofrece una transacción con PostgreSQL. El lock, estado persistido,
+  marca `delivered` y `Message-ID` determinista reducen duplicados, pero un corte
+  entre la aceptación SMTP y la marca local impide garantizar exactly-once.
+- El contenido se renderiza desde la plantilla actual. Antes de habilitar edición
+  de plantillas debe adoptarse un snapshot del contenido o impedir su cambio
+  mientras existan notificaciones `ENCOLADA`.

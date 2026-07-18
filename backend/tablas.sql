@@ -29,6 +29,7 @@ CREATE TABLE notificacion (
     idempotency_key VARCHAR(128) NOT NULL,
     estado VARCHAR(50) NOT NULL DEFAULT 'ENCOLADA',
     intentos INTEGER NOT NULL DEFAULT 0 CHECK (intentos >= 0),
+    next_attempt_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_notificacion_idempotency_key UNIQUE (idempotency_key),
@@ -53,4 +54,6 @@ CREATE TABLE intento (
 
 CREATE INDEX idx_notificacion_plantilla_id ON notificacion(plantilla_id);
 CREATE INDEX idx_notificacion_estado ON notificacion(estado);
+CREATE INDEX idx_notificacion_next_attempt_at ON notificacion(next_attempt_at)
+    WHERE estado = 'ENCOLADA';
 CREATE INDEX idx_intento_notificacion_id ON intento(notificacion_id);

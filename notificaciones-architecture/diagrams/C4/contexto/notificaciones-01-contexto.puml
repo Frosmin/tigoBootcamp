@@ -1,19 +1,18 @@
 @startuml notificaciones-01-contexto
-
 !define RELATIVE_INCLUDE "."
 !include ../../../../notificaciones-architecture/binariess/C4_Context.puml
 
 LAYOUT_LEFT_RIGHT()
-
 title Diagrama de Contexto (C1) - Notificaciones
 
-Person(emisores,"Emisores", "Sistemas internos, gestionan plantillas, envíos y consultas.")
-System(notificaciones, "Microservicio Notificaciones", "API backend que administra plantillas y entrega notificaciones por email o SMS con estados.")
+Person(emisores, "Emisores", "Servicios internos autenticados previamente")
+System(notificaciones, "Microservicio Notificaciones", "Administra plantillas, crea notificaciones idempotentes y entrega EMAIL de forma asíncrona")
+System_Ext(gmail, "Gmail SMTP", "Proveedor actual para entrega de correo")
+System_Ext(sms, "Proveedor SMS futuro", "Fuera del alcance hasta que sea definido")
 
-System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega correos electrónicos y mensajes SMS.")
+Rel(emisores, notificaciones, "Crea y consulta notificaciones y plantillas", "HTTPS / JSON")
+Rel(notificaciones, gmail, "Entrega EMAIL", "SMTP TLS")
+Rel(notificaciones, sms, "Integración pendiente", "No implementada")
 
-Rel(emisores, notificaciones, "Gestiona plantillas, solicita envíos, consulta estado e historial y solicita reintentos", "HTTPS / REST / JSON")
-Rel(notificaciones, proveedor, "Solicita la entrega de email o SMS", "Librería sms y email")
-Rel(proveedor, notificaciones, "Devuelve el resultado de entrega", "Respuesta API")
 SHOW_LEGEND()
 @enduml

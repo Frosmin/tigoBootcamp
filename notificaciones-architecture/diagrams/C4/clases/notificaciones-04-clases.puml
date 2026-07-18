@@ -1,215 +1,98 @@
 @startuml notificaciones-04-clases
-
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam classAttributeIconSize 0
 skinparam class {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    ArrowColor #1168BD
-    FontColor #1A1A1A
-    AttributeFontColor #1A1A1A
-    StereotypeFontColor #003865
+  BackgroundColor #FFFFFF
+  BorderColor #1168BD
+  ArrowColor #1168BD
 }
-skinparam package {
-    BackgroundColor #F4F8FD
-    BorderColor #9BB7D4
-    FontColor #003865
-}
-skinparam enum {
-    BackgroundColor #FFF7E6
-    BorderColor #E0A800
-    FontColor #1A1A1A
-}
-
-title Diagrama de Clases (C4) - Notificaciones
+title Diagrama de Clases y Módulos (C4) - Worker
 
 package "Dominio" {
-    enum Canal {
-        EMAIL
-        SMS
-    }
-
-    enum EstadoNotificacion {
-        ENCOLADA
-        ENVIADA
-        FALLIDA
-    }
-
-    enum ResultadoIntento {
-        EXITOSO
-        FALLIDO
-    }
-
-    class Plantilla {
-        +id: string
-        +nombre: string
-        +canal: Canal
-        +contenido: string
-        +variables: string[]
-        +validarVariables(valores: object): void
-        +renderizar(valores: object): string
-    }
-
-    class Notificacion {
-        +id: string
-        +canal: Canal
-        +destinatario: string
-        +plantillaId: string
-        +variables: object
-        +estado: EstadoNotificacion
-        +intentos: number
-        +idempotencyKey: string
-        +creadaEn: Date
-        +marcarEnviada(): void
-        +marcarFallida(): void
-        +puedeReintentarse(maxIntentos: number): boolean
-    }
-
-    class Intento {
-        +id: string
-        +notificacionId: string
-        +numero: number
-        +resultado: ResultadoIntento
-        +detalle: string
-        +timestamp: Date
-    }
-
-    class PoliticaReintentos {
-        +maxIntentos: number
-        +demoraBaseMs: number
-        +puedeReintentar(notificacion: Notificacion): boolean
-        +calcularDemora(numeroIntento: number): number
-    }
+  class TemplateRenderer {
+    +renderTemplate(content, variables): string
+  }
+  class RetryPolicy {
+    +calculateRetryDelay(attempt, baseMs, maxMs): number
+  }
+  class DeliveryError {
+    +code: string
+    +retryable: boolean
+    +cause: Error
+  }
 }
 
-Plantilla --> Canal
-Notificacion --> Canal
-Notificacion --> EstadoNotificacion
-Notificacion "1" --> "1" Plantilla
-Notificacion "1" *-- "0..*" Intento
-Intento --> ResultadoIntento
-PoliticaReintentos ..> Notificacion
-
-package "API" {
-    class NotificacionController {
-        +POST /api/v1/notifications(req, res): void
-        +GET /api/v1/notifications/:id(req, res): void
-        +POST /api/v1/notifications/:id/retry(req, res): void
-        +GET /api/v1/notifications(req, res): void
-    }
-
-    class PlantillaController {
-        +POST /api/v1/templates(req, res): void
-        +PUT /api/v1/templates/:id(req, res): void
-        +DELETE /api/v1/templates/:id(req, res): void
-    }
-
-    class ValidationMiddleware {
-        +validate(schema): Middleware
-    }
+package "Entrega" {
+  interface DeliveryConnector {
+    +send(message): DeliveryResult
+  }
+  class EmailConnector {
+    -transporter: NodemailerTransporter
+    -from: string
+    -messageIdDomain: string
+    +send(message): DeliveryResult
+  }
+  class SmsConnector {
+    +send(message): DeliveryResult
+  }
 }
+EmailConnector ..|> DeliveryConnector
+SmsConnector ..|> DeliveryConnector
+EmailConnector ..> DeliveryError
+SmsConnector ..> DeliveryError
 
 package "Aplicación" {
-    class NotificacionService {
-        +crear(command, idempotencyKey): Notificacion
-        +obtener(id): Notificacion
-        +listar(canal, estado, page, pageSize): Page
-        +reintentar(id): Notificacion
-    }
-
-    class PlantillaService {
-        +crear(command): Plantilla
-        +actualizar(id, command): Plantilla
-        +eliminar(id): void
-    }
-
-    class ProcesadorEnvios {
-        +procesarSiguiente(): void
-        +procesar(notificacionId: string): void
-        -registrarResultado(resultado): Intento
-    }
+  class DeliveryProcessor {
+    +process(notificationId): ProcessingOutcome
+  }
+  class DeliveryWorker {
+    +run(processNotification, consumerName, signal): void
+  }
 }
-
-ValidationMiddleware --> NotificacionController
-ValidationMiddleware --> PlantillaController
-NotificacionController --> NotificacionService
-PlantillaController --> PlantillaService
 
 package "Persistencia" {
-    interface NotificacionRepository {
-        +findById(id): Notificacion
-        +findPage(filtros, page, pageSize): Page
-        +findByIdempotencyKey(key): Notificacion
-        +save(notificacion): Notificacion
-        +deleteAfterQueueFailure(id, key): void
-        +updateEstado(id, estado): void
-    }
-
-    interface PlantillaRepository {
-        +findById(id): Plantilla
-        +existsByNombreAndCanal(nombre, canal, excludeId): boolean
-        +save(plantilla): Plantilla
-        +deleteById(id): void
-    }
-
-    interface IntentoRepository {
-        +save(intento): Intento
-        +findByNotificacionId(id): Intento[]
-    }
+  class NotificationRepository {
+    +findNotificationForDelivery(id): Notification
+  }
+  class AttemptRepository {
+    +recordDeliveryAttempt(command): Attempt
+  }
 }
 
-package "Adaptadores e infraestructura" {
-    interface ColaNotificaciones {
-        +encolar(notificacionId: string): void
-        +encolarDiferido(notificacionId: string, delayMs: number): void
-        +siguiente(): string
-    }
-
-    interface DeliveryConnector {
-        +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
-    }
-
-    class ThirdPartyEmailSmsConnector {
-        +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
-    }
-
-    class RedisQueueAdapter {
-        +encolar(notificacionId: string): void
-        +encolarDiferido(notificacionId: string, delayMs: number): void
-        +siguiente(): string
-    }
-
-    class ThroughputLimiter {
-        +maxPorMinuto: number
-        +adquirirPermiso(): boolean
-    }
-
-    class DeliveryGuard {
-        +fueEntregada(notificacionId: string): boolean
-    }
+package "Redis" {
+  class WorkerQueue {
+    +ensureConsumerGroup(): void
+    +readMessages(consumer): Message[]
+    +claimStaleMessages(consumer): Message[]
+    +acknowledge(messageId): void
+    +schedule(notificationId, dueAt): void
+    +promoteDue(): number
+    +acquireLock(notificationId, token): boolean
+    +releaseLock(notificationId, token): void
+    +isMarkedDelivered(notificationId): boolean
+    +markDelivered(notificationId): void
+    +acquireThroughputPermit(channel, limit): Permit
+  }
 }
 
-ThirdPartyEmailSmsConnector ..|> DeliveryConnector
-RedisQueueAdapter ..|> ColaNotificaciones
+DeliveryWorker --> WorkerQueue : claim/read/ack/promote
+DeliveryWorker --> DeliveryProcessor
+DeliveryProcessor --> NotificationRepository
+DeliveryProcessor --> AttemptRepository
+DeliveryProcessor --> WorkerQueue
+DeliveryProcessor --> TemplateRenderer
+DeliveryProcessor --> RetryPolicy
+DeliveryProcessor --> EmailConnector
+DeliveryProcessor --> SmsConnector
 
-NotificacionService ..> NotificacionRepository
-NotificacionService ..> PlantillaRepository
-NotificacionService ..> ColaNotificaciones
-NotificacionService ..> Notificacion
+note right of AttemptRepository
+El UPDATE de notificación y el INSERT
+del intento comparten una sentencia SQL.
+end note
 
-PlantillaService ..> PlantillaRepository
-PlantillaService ..> Plantilla
-
-ProcesadorEnvios ..> NotificacionRepository
-ProcesadorEnvios ..> PlantillaRepository
-ProcesadorEnvios ..> IntentoRepository
-ProcesadorEnvios ..> ColaNotificaciones
-ProcesadorEnvios ..> DeliveryConnector
-ProcesadorEnvios ..> ThroughputLimiter
-ProcesadorEnvios ..> DeliveryGuard
-ProcesadorEnvios ..> PoliticaReintentos
-
-
-
+note bottom of WorkerQueue
+Consumer group desde 0, XAUTOCLAIM,
+ZSET diferido, scripts Lua, locks y rate limit.
+end note
 @enduml

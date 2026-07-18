@@ -2,100 +2,60 @@
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam sequenceMessageAlign center
-skinparam sequence {
-    ArrowColor #1168BD
-    LifeLineBorderColor #1168BD
-    ParticipantBorderColor #003865
-    ParticipantBackgroundColor #003865
-    ParticipantFontColor #FFFFFF
-    ActorBorderColor #003865
-}
+title LLD - Procesamiento de una notificación
 
-title LLD simple - API de Notificaciones
-
-actor "Servicio interno" as emisor
-participant "Middleware\nde validación" as validation
-participant "Controlador" as controller
-participant "Servicio de\nNotificaciones" as service
-participant "Repositorios" as repositories
+participant "DeliveryWorker" as runner
+participant "WorkerQueue" as queue
+participant "DeliveryProcessor" as processor
 database "PostgreSQL" as db
-participant "Adaptador de\nRedis Streams" as queueAdapter
-queue "Redis Stream" as redis
+participant "Renderer" as renderer
+participant "Connector" as connector
+participant "Gmail SMTP" as gmail
 
-== Crear y encolar ==
-emisor -> validation : POST /api/v1/notifications\nIdempotency-Key: clave
-validation -> validation : validar header y body con Zod
-alt datos inválidos
-    validation --> emisor : 400 Bad Request
-else datos válidos
-    validation -> controller : create(body)
-    controller -> service : crear
-    service -> repositories : buscar plantilla
-    repositories -> db : SELECT plantilla
-    db --> repositories : plantilla o null
-    service -> service : validar canal y variables
-    alt plantilla inexistente
-        service --> controller : error 404
-        controller --> emisor : 404 Not Found
-    else variables incompletas
-        service --> controller : error 400
-        controller --> emisor : 400 Bad Request
-    else solicitud válida
-        service -> repositories : INSERT con idempotency_key UNIQUE
-        repositories -> db : INSERT ... ON CONFLICT DO NOTHING
-        alt solicitud duplicada
-            service -> repositories : obtener notificación existente
-            repositories -> db : SELECT notificación
-            service -> service : comparar payload
-            controller --> emisor : 200 OK o 409 Conflict
-        else solicitud nueva
-            service -> queueAdapter : encolar(notificacionId)
-            queueAdapter -> redis : XADD notifications:dispatch
-            alt Redis no disponible
-                service -> repositories : eliminar notificación nueva
-                repositories -> db : DELETE compensatorio
-                controller --> emisor : 503 Service Unavailable
-            else publicado
-                controller --> emisor : 202 Accepted
-            end
+runner -> queue : XAUTOCLAIM o XREADGROUP
+queue --> runner : messageId + notificationId
+runner -> processor : process(notificationId)
+processor -> queue : SET lock NX PX
+alt lock ocupado
+  processor --> runner : DUPLICATE_LOCKED
+else lock adquirido
+  processor -> db : SELECT notificación + plantilla
+  alt no existe, ENVIADA o FALLIDA
+    processor --> runner : descartar de forma segura
+  else ENCOLADA
+    processor -> queue : GET delivered
+    alt delivered existente
+      processor -> db : EXITOSO + ENVIADA atómico
+    else no entregada
+      processor -> renderer : renderTemplate
+      processor -> queue : permiso por canal
+      alt sin permiso
+        processor -> queue : ZADD sin consumir intento
+      else EMAIL
+        processor -> connector : sendMail
+        connector -> gmail : SMTP + Message-ID determinista
+        gmail --> connector : éxito o error
+        alt éxito
+          processor -> queue : SET delivered
+          processor -> db : EXITOSO + ENVIADA atómico
+        else reintentable y no agotado
+          processor -> db : FALLIDO + ENCOLADA + next_attempt_at
+          processor -> queue : ZADD con backoff
+        else terminal o agotado
+          processor -> db : FALLIDO + FALLIDA atómico
         end
+      else SMS
+        processor -> db : FALLIDO + FALLIDA\nSMS_PROVIDER_NOT_CONFIGURED
+      end
     end
+  end
+  processor -> queue : liberar lock con token (Lua)
+  processor --> runner : outcome
 end
+runner -> queue : XACK messageId
 
-== Consultar  ==
-emisor -> validation : GET /notifications/{id}
-validation -> validation : validar BIGINT positivo sin convertir a Number
-alt id inválido
-    validation --> emisor : 400 Bad Request
-else id válido
-    validation -> controller : getById(id)
-    controller -> service : obtener(id)
-    service -> repositories : buscar notificación
-    repositories -> db : SELECT notificación
-    alt notificación inexistente
-        service --> controller : error 404
-        controller --> emisor : 404 Not Found
-    else notificación existente
-        service -> repositories : buscar historial de intentos
-        repositories -> db : SELECT intentos ORDER BY numero
-        db --> repositories : intentos o lista vacía
-        controller --> emisor : 200 recurso + historialIntentos
-    end
-end
-
-== Reintentar  ==
-emisor -> validation : POST /notifications/{id}/retry
-validation -> controller : retry(id)
-controller -> service : reintentar(id)
-service -> repositories : consultar estado e intentos
-service -> service : validar FALLIDA y máximo de intentos
-alt reintento permitido
-    service -> repositories : actualizar estado ENCOLADA
-    service -> queueAdapter : encolar con backoff
-    controller --> emisor : 202 Accepted
-else reintento no permitido
-    controller --> emisor : 404 o 409
-end
-
-
+note over runner,queue
+Si falla el procesamiento antes de persistir,
+no hay XACK y XAUTOCLAIM recuperará el pendiente.
+end note
 @enduml

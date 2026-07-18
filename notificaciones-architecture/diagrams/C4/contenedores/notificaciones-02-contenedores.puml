@@ -3,27 +3,24 @@
 !include ../../../../notificaciones-architecture/binariess/C4_Container.puml
 
 LAYOUT_LEFT_RIGHT()
-
 title Diagrama de Contenedores (C2) - Notificaciones
 
-Person(emisores, "Emisores", "Servicios internos.")
-System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega mensajes por email y SMS.")
+Person(emisores, "Emisores", "Servicios internos autenticados previamente.")
+System_Ext(gmail, "Gmail SMTP", "Entrega correo mediante SMTP seguro.")
 
 System_Boundary(p07, "Microservicio P07 Notificaciones") {
-    Container(api, "API REST", "Node.js / ultimate-express / Zod", "Expone api para crear y consultar notificaciones, reintentar fallos y administrar plantillas.")
-    Container(worker, "Worker de envíos", "Node.js 22", "Consume trabajos pendientes, renderiza plantillas, controla el throughput, realiza envíos y programa reintentos con backoff exponencial.")
-    ContainerDb(db, "Base de datos", "PostgreSQL", "Persiste plantillas, notificaciones, claves de idempotencia, estados e intentos de entrega.")
-    ContainerDb(redis, "Cola y coordinación", "Redis Streams", "Mantiene la cola, trabajos diferidos y contadores de throughput.")
+  Container(api, "API REST", "Node.js / ultimate-express / Zod", "Crea y consulta notificaciones y administra plantillas.")
+  Container(worker, "Worker de envíos", "Node.js 22 / Nodemailer", "Consume grupos Redis, entrega EMAIL y registra resultados. SMS aún no tiene proveedor.")
+  ContainerDb(db, "Base de datos", "PostgreSQL", "Fuente de verdad para plantillas, idempotencia, estados e intentos.")
+  ContainerDb(redis, "Cola y coordinación", "Redis Streams + Sorted Sets", "Stream, pendientes, reintentos diferidos, locks, delivered y throughput.")
 }
 
-Rel(emisores, api, "Envía, consulta, reintenta, lista y gestiona plantillas", "HTTPS / REST / JSON")
-Rel(api, db, "Lee y persiste plantillas, notificaciones e intentos", "SQL")
-Rel(api, redis, "Publica envíos mediante XADD", "RESP")
-
-Rel(worker, redis, "Consume trabajos y aplica backoff, idempotencia y límite por minuto", "RESP")
-Rel(worker, db, "Lee plantillas y actualiza estados e intentos", "SQL")
-Rel(worker, proveedor, "Envía email o SMS mediante un conector genérico", "Librería sms y email / HTTPS")
-Rel(proveedor, worker, "Devuelve éxito o fallo", "Respuesta API")
+Rel(emisores, api, "Crea y consulta", "HTTPS / JSON")
+Rel(api, db, "SQL parametrizado")
+Rel(api, redis, "XADD notificationId", "RESP")
+Rel(worker, redis, "XREADGROUP, XAUTOCLAIM, XACK, ZSET y locks", "RESP")
+Rel(worker, db, "Lee plantilla; registra intento y estado atómicamente", "SQL")
+Rel(worker, gmail, "EMAIL con Message-ID determinista", "SMTP TLS")
 
 SHOW_LEGEND()
 @enduml

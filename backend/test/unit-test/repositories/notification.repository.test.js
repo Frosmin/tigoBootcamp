@@ -6,6 +6,7 @@ import { executeQuery } from '@tigo/postgres-connector';
 import {
   deleteNotificationAfterQueueFailure,
   findNotificationById,
+  findNotificationForDelivery,
   findNotificationByIdempotencyKey,
   insertNotification
 } from '../../../src/repositories/notification.repository.js';
@@ -51,6 +52,15 @@ describe('notification.repository.js', () => {
     });
     expect(executeQuery.mock.calls[0][0]).toMatch(/WHERE id = \$1::bigint/);
     expect(executeQuery.mock.calls[0][1]).toEqual(['10']);
+  });
+
+  it('loads notification and template data needed by the worker', async () => {
+    executeQuery.mockResolvedValue([{ id: '10', templateName: 'confirmacion' }]);
+    await expect(findNotificationForDelivery('10')).resolves.toMatchObject({
+      templateName: 'confirmacion'
+    });
+    expect(executeQuery.mock.calls[0][0]).toMatch(/INNER JOIN plantilla/);
+    expect(executeQuery.mock.calls[0][0]).toMatch(/next_attempt_at AS "nextAttemptAt"/);
   });
 
   it('deletes only the row created by the failed request', async () => {
