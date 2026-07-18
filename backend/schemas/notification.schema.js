@@ -35,3 +35,10 @@ export const getNotificationParamsSchema = z.object({
       !/^[1-9]\d*$/.test(value) || BigInt(value) <= POSTGRES_BIGINT_MAX
     ))
 }).strict();
+
+export const listNotificationsQuerySchema = z.object({
+  canal: z.enum(['EMAIL', 'SMS']).optional(),
+  estado: z.enum(['ENCOLADA', 'ENVIADA', 'FALLIDA']).optional(),
+  page: z.coerce.number().int().positive().safe().default(1),
+  limit: z.coerce.number().int().min(1).max(100).safe().default(20)
+}).strict();

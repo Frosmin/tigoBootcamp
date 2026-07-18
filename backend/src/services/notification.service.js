@@ -4,6 +4,7 @@ import {
   deleteNotificationAfterQueueFailure,
   findNotificationById,
   findNotificationByIdempotencyKey,
+  findNotificationsPage,
   insertNotification
 } from '../repositories/notification.repository.js';
 import { enqueueNotification } from '../queues/notification.queue.js';
@@ -82,4 +83,29 @@ export const getNotificationService = async (id) => {
 
   const historialIntentos = await findAttemptsByNotificationId(id);
   return { ...notification, historialIntentos };
+};
+
+export const listNotificationsService = async ({
+  canal,
+  estado,
+  page,
+  limit
+}) => {
+  const offset = (BigInt(page - 1) * BigInt(limit)).toString();
+  const { items, totalItems } = await findNotificationsPage({
+    canal,
+    estado,
+    limit,
+    offset
+  });
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      totalItems,
+      totalPages: Math.ceil(totalItems / limit)
+    }
+  };
 };

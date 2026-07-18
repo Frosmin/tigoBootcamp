@@ -5,7 +5,8 @@ import {
 } from '../../schemas/template.schema.js';
 import {
   createNotificationSchema,
-  getNotificationParamsSchema
+  getNotificationParamsSchema,
+  listNotificationsQuerySchema
 } from '../../schemas/notification.schema.js';
 import { errorCodes } from '../utils/errorCodes.js';
 import { sendError } from '../utils/response.js';
@@ -61,10 +62,25 @@ const validateParams = (schema) => (req, res, next) => {
   return next();
 };
 
+const validateQuery = (schema) => (req, res, next) => {
+  logger.info({ '[REQUEST QUERY]': req.query });
+  const result = schema.safeParse(req.query ?? {});
+
+  if (!result.success) {
+    logger.info({ '[VALIDATION ISSUES]': result.error.issues });
+    const { statusHttp, response } = sendError(errorCodes.MISSING_REQUIRED_PARAMETER);
+    return res.status(statusHttp).json(response);
+  }
+
+  req.query = result.data;
+  return next();
+};
+
 export const validateRequestMiddleware = {
   createTemplate: () => validate(createTemplateSchema),
   updateTemplate: () => validate(createTemplateSchema),
   templateId: () => validateParams(templateParamsSchema),
   createNotification: () => validateNotification,
-  getNotification: () => validateParams(getNotificationParamsSchema)
+  getNotification: () => validateParams(getNotificationParamsSchema),
+  listNotifications: () => validateQuery(listNotificationsQuerySchema)
 };

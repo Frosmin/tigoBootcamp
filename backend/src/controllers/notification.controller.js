@@ -1,7 +1,8 @@
 import { logger } from '@tigo/logger';
 import {
   createNotificationService,
-  getNotificationService
+  getNotificationService,
+  listNotificationsService
 } from '../services/notification.service.js';
 import { sendError } from '../utils/response.js';
 
@@ -29,6 +30,23 @@ export async function getNotificationController(req, res) {
 
   try {
     responseBody = await getNotificationService(req.params.id);
+    return res.status(200).json(responseBody);
+  } catch (error) {
+    const { statusHttp, response } = sendError(error?.errorCode);
+    responseBody = response;
+    return res.status(statusHttp).json(responseBody);
+  } finally {
+    logger.info({ '[RESPONSE BODY]': responseBody });
+    logger.endTimer('ExecutionTimeAll');
+  }
+}
+
+export async function listNotificationsController(req, res) {
+  let responseBody = {};
+  logger.startTimer('ExecutionTimeAll');
+
+  try {
+    responseBody = await listNotificationsService(req.query);
     return res.status(200).json(responseBody);
   } catch (error) {
     const { statusHttp, response } = sendError(error?.errorCode);

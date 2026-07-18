@@ -162,4 +162,59 @@ describe('validate.middleware.js', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
   });
+
+  it('applies default notification pagination', () => {
+    const req = {};
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.listNotifications()(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.query).toEqual({ page: 1, limit: 20 });
+  });
+
+  it.each([
+    [{ canal: 'EMAIL' }, { canal: 'EMAIL', page: 1, limit: 20 }],
+    [{ estado: 'FALLIDA' }, { estado: 'FALLIDA', page: 1, limit: 20 }],
+    [
+      { canal: 'SMS', estado: 'ENVIADA', page: '2', limit: '50' },
+      { canal: 'SMS', estado: 'ENVIADA', page: 2, limit: 50 }
+    ]
+  ])('accepts and normalizes notification query %#', (query, expected) => {
+    const req = { query };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.listNotifications()(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.query).toEqual(expected);
+  });
+
+  it.each([
+    [{ canal: 'email' }],
+    [{ canal: 'WHATSAPP' }],
+    [{ estado: 'PROCESANDO' }],
+    [{ page: '0' }],
+    [{ page: '-1' }],
+    [{ page: '1.5' }],
+    [{ page: 'abc' }],
+    [{ limit: '0' }],
+    [{ limit: '101' }],
+    [{ limit: '1.5' }],
+    [{ pageSize: '20' }]
+  ])('rejects invalid notification query %#', (query) => {
+    const req = { query };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.listNotifications()(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: { code: 'BR001', message: 'Missing required parameter' }
+    });
+  });
 });

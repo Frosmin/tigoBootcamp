@@ -2,16 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../src/services/notification.service.js', () => ({
   createNotificationService: vi.fn(),
-  getNotificationService: vi.fn()
+  getNotificationService: vi.fn(),
+  listNotificationsService: vi.fn()
 }));
 
 import {
   createNotificationService,
-  getNotificationService
+  getNotificationService,
+  listNotificationsService
 } from '../../../src/services/notification.service.js';
 import {
   createNotificationController,
-  getNotificationController
+  getNotificationController,
+  listNotificationsController
 } from '../../../src/controllers/notification.controller.js';
 import { errorCodes, setError } from '../../../src/utils/errorCodes.js';
 
@@ -97,5 +100,34 @@ describe('notification.controller.js', () => {
     await getNotificationController({ params: { id: '9' } }, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it('returns 200 with a paginated notification list', async () => {
+    const query = { canal: 'EMAIL', page: 1, limit: 20 };
+    const response = {
+      items: [notification],
+      pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 }
+    };
+    listNotificationsService.mockResolvedValue(response);
+
+    await listNotificationsController({ query }, res);
+
+    expect(listNotificationsService).toHaveBeenCalledWith(query);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(response);
+  });
+
+  it('returns 500 when listing notifications fails unexpectedly', async () => {
+    listNotificationsService.mockRejectedValue(new Error('database unavailable'));
+
+    await listNotificationsController({ query: { page: 1, limit: 20 } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: {
+        code: errorCodes.GENERIC_INTERNAL_SERVER_ERROR,
+        message: 'Generic internal server error'
+      }
+    });
   });
 });

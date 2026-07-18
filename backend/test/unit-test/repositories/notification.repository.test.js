@@ -7,6 +7,7 @@ import {
   deleteNotificationAfterQueueFailure,
   findNotificationById,
   findNotificationByIdempotencyKey,
+  findNotificationsPage,
   insertNotification
 } from '../../../src/repositories/notification.repository.js';
 
@@ -58,5 +59,47 @@ describe('notification.repository.js', () => {
     await deleteNotificationAfterQueueFailure(10, 'request-1');
     expect(executeQuery.mock.calls[0][0]).toMatch(/DELETE FROM notificacion/);
     expect(executeQuery.mock.calls[0][1]).toEqual([10, 'request-1']);
+  });
+
+  it('returns a filtered page with its total count', async () => {
+    const items = [
+      { id: '10', canal: 'EMAIL', estado: 'FALLIDA' },
+      { id: '9', canal: 'EMAIL', estado: 'FALLIDA' }
+    ];
+    executeQuery
+      .mockResolvedValueOnce([{ totalItems: '5' }])
+      .mockResolvedValueOnce(items);
+
+    await expect(findNotificationsPage({
+      canal: 'EMAIL',
+      estado: 'FALLIDA',
+      limit: 2,
+      offset: '2'
+    })).resolves.toEqual({ items, totalItems: 5 });
+
+    const [countQuery, countParams] = executeQuery.mock.calls[0];
+    const [pageQuery, pageParams] = executeQuery.mock.calls[1];
+    expect(countQuery).toMatch(/COUNT\(\*\) AS "totalItems"/);
+    expect(countQuery).toMatch(/\$1::varchar IS NULL OR canal = \$1::varchar/);
+    expect(countQuery).toMatch(/\$2::varchar IS NULL OR estado = \$2::varchar/);
+    expect(countParams).toEqual(['EMAIL', 'FALLIDA']);
+    expect(pageQuery).toMatch(/ORDER BY created_at DESC, id DESC/);
+    expect(pageQuery).toMatch(/LIMIT \$3::integer/);
+    expect(pageQuery).toMatch(/OFFSET \$4::bigint/);
+    expect(pageParams).toEqual(['EMAIL', 'FALLIDA', 2, '2']);
+  });
+
+  it('uses null parameters when filters are absent', async () => {
+    executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(findNotificationsPage({
+      limit: 20,
+      offset: '0'
+    })).resolves.toEqual({ items: [], totalItems: 0 });
+
+    expect(executeQuery.mock.calls[0][1]).toEqual([null, null]);
+    expect(executeQuery.mock.calls[1][1]).toEqual([null, null, 20, '0']);
   });
 });

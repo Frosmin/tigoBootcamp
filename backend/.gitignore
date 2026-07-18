@@ -11,3 +11,5 @@ JenkinsfileBAK
 deployment-bak.yaml
 
 .env
+skills-lock.json
+skills

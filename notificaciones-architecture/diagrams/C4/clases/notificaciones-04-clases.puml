@@ -114,7 +114,7 @@ package "Aplicación" {
     class NotificacionService {
         +crear(command, idempotencyKey): Notificacion
         +obtener(id): Notificacion
-        +listar(canal, estado, page, pageSize): Page
+        +listar(canal, estado, page, limit): Page
         +reintentar(id): Notificacion
     }
 
@@ -139,7 +139,7 @@ PlantillaController --> PlantillaService
 package "Persistencia" {
     interface NotificacionRepository {
         +findById(id): Notificacion
-        +findPage(filtros, page, pageSize): Page
+        +findPage(filtros, page, limit): Page
         +findByIdempotencyKey(key): Notificacion
         +save(notificacion): Notificacion
         +deleteAfterQueueFailure(id, key): void

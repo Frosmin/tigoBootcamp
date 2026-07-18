@@ -7,6 +7,7 @@ vi.mock('../../../src/repositories/notification.repository.js', () => ({
   insertNotification: vi.fn(),
   findNotificationById: vi.fn(),
   findNotificationByIdempotencyKey: vi.fn(),
+  findNotificationsPage: vi.fn(),
   deleteNotificationAfterQueueFailure: vi.fn()
 }));
 vi.mock('../../../src/queues/notification.queue.js', () => ({
@@ -21,13 +22,15 @@ import {
   deleteNotificationAfterQueueFailure,
   findNotificationById,
   findNotificationByIdempotencyKey,
+  findNotificationsPage,
   insertNotification
 } from '../../../src/repositories/notification.repository.js';
 import { enqueueNotification } from '../../../src/queues/notification.queue.js';
 import { findAttemptsByNotificationId } from '../../../src/repositories/attempt.repository.js';
 import {
   createNotificationService,
-  getNotificationService
+  getNotificationService,
+  listNotificationsService
 } from '../../../src/services/notification.service.js';
 
 describe('notification.service.js', () => {
@@ -158,5 +161,59 @@ describe('notification.service.js', () => {
       errorCode: 'NF001'
     });
     expect(findAttemptsByNotificationId).not.toHaveBeenCalled();
+  });
+
+  it('returns a filtered notification page with pagination metadata', async () => {
+    const items = [notification];
+    findNotificationsPage.mockResolvedValue({ items, totalItems: 21 });
+
+    await expect(listNotificationsService({
+      canal: 'EMAIL',
+      estado: 'ENCOLADA',
+      page: 2,
+      limit: 10
+    })).resolves.toEqual({
+      items,
+      pagination: {
+        page: 2,
+        limit: 10,
+        totalItems: 21,
+        totalPages: 3
+      }
+    });
+    expect(findNotificationsPage).toHaveBeenCalledWith({
+      canal: 'EMAIL',
+      estado: 'ENCOLADA',
+      limit: 10,
+      offset: '10'
+    });
+  });
+
+  it('keeps the total when the requested page has no items', async () => {
+    findNotificationsPage.mockResolvedValue({ items: [], totalItems: 3 });
+
+    await expect(listNotificationsService({ page: 5, limit: 2 })).resolves.toEqual({
+      items: [],
+      pagination: {
+        page: 5,
+        limit: 2,
+        totalItems: 3,
+        totalPages: 2
+      }
+    });
+  });
+
+  it('returns zero pages for an empty collection', async () => {
+    findNotificationsPage.mockResolvedValue({ items: [], totalItems: 0 });
+
+    await expect(listNotificationsService({ page: 1, limit: 20 })).resolves.toEqual({
+      items: [],
+      pagination: {
+        page: 1,
+        limit: 20,
+        totalItems: 0,
+        totalPages: 0
+      }
+    });
   });
 });

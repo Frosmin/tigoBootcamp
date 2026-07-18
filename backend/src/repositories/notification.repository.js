@@ -57,6 +57,37 @@ export const findNotificationById = async (id) => {
   return rows[0];
 };
 
+export const findNotificationsPage = async ({ canal, estado, limit, offset }) => {
+  const filterParameters = [canal ?? null, estado ?? null];
+  const filters = `
+    WHERE ($1::varchar IS NULL OR canal = $1::varchar)
+      AND ($2::varchar IS NULL OR estado = $2::varchar)
+  `;
+  const countQuery = `
+    SELECT COUNT(*) AS "totalItems"
+    FROM notificacion
+    ${filters};
+  `;
+  const pageQuery = `
+    SELECT ${COLUMNS}
+    FROM notificacion
+    ${filters}
+    ORDER BY created_at DESC, id DESC
+    LIMIT $3::integer
+    OFFSET $4::bigint;
+  `;
+
+  const [countRows, items] = await Promise.all([
+    executeQuery(countQuery, filterParameters),
+    executeQuery(pageQuery, [...filterParameters, limit, offset])
+  ]);
+
+  return {
+    items,
+    totalItems: Number(countRows[0]?.totalItems ?? 0)
+  };
+};
+
 export const deleteNotificationAfterQueueFailure = async (id, idempotencyKey) => {
   const query = `
     DELETE FROM notificacion

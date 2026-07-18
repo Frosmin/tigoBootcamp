@@ -13,7 +13,7 @@ valida los datos de entrada y las reglas de negocio.
 |---|---|---|
 | `POST` | `/api/v1/notifications` | Valida la plantilla y sus variables, persiste en `ENCOLADA` y publica el trabajo. |
 | `GET` | `/api/v1/notifications/{id}` | Devuelve el recurso, el contador y `historialIntentos` ordenado. |
-| `GET` | `/api/v1/notifications?canal&estado&page&pageSize` | Devuelve el historial filtrado y paginado. |
+| `GET` | `/api/v1/notifications?canal&estado&page&limit` | Devuelve el historial filtrado y paginado. |
 | `POST` | `/api/v1/notifications/{id}/retry` | Programa un reintento de una notificación `FALLIDA`. |
 
 ## Reglas

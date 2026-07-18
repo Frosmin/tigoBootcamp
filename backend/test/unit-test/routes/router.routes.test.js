@@ -22,7 +22,8 @@ vi.mock('../../../src/controllers/template.controller.js', () => ({
 }));
 vi.mock('../../../src/controllers/notification.controller.js', () => ({
   createNotificationController: 'createNotificationController',
-  getNotificationController: 'getNotificationController'
+  getNotificationController: 'getNotificationController',
+  listNotificationsController: 'listNotificationsController'
 }));
 vi.mock('../../../src/middleware/validate.middleware.js', () => ({
   validateRequestMiddleware: {
@@ -30,7 +31,8 @@ vi.mock('../../../src/middleware/validate.middleware.js', () => ({
     updateTemplate: vi.fn(() => 'updateTemplateValidator'),
     templateId: vi.fn(() => 'templateIdValidator'),
     createNotification: vi.fn(() => 'createNotificationValidator'),
-    getNotification: vi.fn(() => 'getNotificationValidator')
+    getNotification: vi.fn(() => 'getNotificationValidator'),
+    listNotifications: vi.fn(() => 'listNotificationsValidator')
   }
 }));
 
@@ -59,6 +61,11 @@ describe('router.routes.js', () => {
       '/notifications',
       'createNotificationValidator',
       'createNotificationController'
+    );
+    expect(mockRouter.get).toHaveBeenCalledWith(
+      '/notifications',
+      'listNotificationsValidator',
+      'listNotificationsController'
     );
     expect(mockRouter.get).toHaveBeenCalledWith(
       '/notifications/:id',

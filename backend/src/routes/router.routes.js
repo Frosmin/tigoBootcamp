@@ -7,7 +7,8 @@ import {
 } from '../controllers/template.controller.js';
 import {
   createNotificationController,
-  getNotificationController
+  getNotificationController,
+  listNotificationsController
 } from '../controllers/notification.controller.js';
 import { validateRequestMiddleware } from '../middleware/validate.middleware.js';
 const { Router } = ultimateExpress;
@@ -34,6 +35,12 @@ router.delete(
   '/templates/:id',
   validateRequestMiddleware.templateId(),
   deleteTemplateController
+);
+
+router.get(
+  '/notifications',
+  validateRequestMiddleware.listNotifications(),
+  listNotificationsController
 );
 
 router.get(

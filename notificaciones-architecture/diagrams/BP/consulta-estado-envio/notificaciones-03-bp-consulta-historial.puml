@@ -56,7 +56,7 @@ if (¿Tipo de consulta?) then (Estado por id)
     endif
 
 else (Historial)
-    :Listar historial con filtros\nGET /api/v1/notifications?canal&estado&page&pageSize;
+    :Listar historial con filtros\nGET /api/v1/notifications?canal&estado&page&limit;
     |API REST|
     :Validar filtros y paginación;
     if (¿Filtros y paginación válidos?) then (Sí)
@@ -80,7 +80,7 @@ endif
 legend right
 |= RF |= Endpoint |
 | RF-7.3 | GET /api/v1/notifications/{id} |
-| RF-7.5 | GET /api/v1/notifications?canal&estado&page&pageSize |
+| RF-7.5 | GET /api/v1/notifications?canal&estado&page&limit |
 endlegend
 
 @enduml
