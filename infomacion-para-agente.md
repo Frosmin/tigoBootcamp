@@ -15,18 +15,21 @@ para sms (aun por definir el proveedor)
 aun no hagas documentacion con openapi 
 
 
+
+implementacion que quiero BullMQ + Redis + PostgreSQL como fuente de verdad + patrón transactional outbox.
+
+
 cosas que faltan para implementar
 1 (completado)
 PUT /templates/:id y DELETE /templates/:id
 Completa primero la gestión de plantillas. Incluye validación de id, evitar actualizar a un nombre/canal ya existente y bloquear el borrado si la plantilla ya tiene notificaciones asociadas.
 
-2
+2 (completado)
 GET /notifications
 Implementa el listado con filtros opcionales canal y estado, más paginación (page, limit). Es relativamente aislado y te deja verificar el historial creado por los demás flujos.
 
 3
-Worker de envío y persistencia de intentos
-Aunque no es un endpoint, es indispensable: debe consumir Redis, enviar por email/SMS, actualizar estado (ENCOLADA, ENVIADA, FALLIDA) y registrar cada intento en intento.
+ worker BullMQ + Redis + PostgreSQL como fuente de verdad + patrón transactional outbox.
 
 4
 POST /notifications/:id/retry
