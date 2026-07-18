@@ -1,5 +1,8 @@
 import { logger } from '@tigo/logger';
-import { createTemplateSchema } from '../../schemas/template.schema.js';
+import {
+  createTemplateSchema,
+  templateParamsSchema
+} from '../../schemas/template.schema.js';
 import {
   createNotificationSchema,
   getNotificationParamsSchema
@@ -60,6 +63,8 @@ const validateParams = (schema) => (req, res, next) => {
 
 export const validateRequestMiddleware = {
   createTemplate: () => validate(createTemplateSchema),
+  updateTemplate: () => validate(createTemplateSchema),
+  templateId: () => validateParams(templateParamsSchema),
   createNotification: () => validateNotification,
   getNotification: () => validateParams(getNotificationParamsSchema)
 };

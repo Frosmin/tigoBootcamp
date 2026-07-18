@@ -19,3 +19,13 @@ export const createTemplateSchema = z.object({
     }
   })
 }).strict();
+
+const POSTGRES_BIGINT_MAX = 9223372036854775807n;
+
+export const templateParamsSchema = z.object({
+  id: z.string()
+    .regex(/^[1-9]\d*$/)
+    .refine((value) => (
+      !/^[1-9]\d*$/.test(value) || BigInt(value) <= POSTGRES_BIGINT_MAX
+    ))
+}).strict();

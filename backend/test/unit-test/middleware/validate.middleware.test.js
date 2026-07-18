@@ -57,6 +57,54 @@ describe('validate.middleware.js', () => {
     expect(next).toHaveBeenCalledOnce();
   });
 
+  it('validates and normalizes the complete update body', () => {
+    const req = { body: { ...validBody }, params: { id: '8' } };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.updateTemplate()(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.body.nombre).toBe('confirmacion-pedido');
+    expect(req.body.variables).toEqual(['nombre', 'pedidoId']);
+  });
+
+  it('rejects a partial update body', () => {
+    const req = { body: { nombre: 'nuevo-nombre' }, params: { id: '8' } };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.updateTemplate()(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it.each(['1', '9223372036854775807'])('accepts template bigint id %s', (id) => {
+    const req = { params: { id }, body: {} };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.templateId()(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.params).toEqual({ id });
+  });
+
+  it.each(['0', '-1', '1.5', 'abc', '9223372036854775808'])(
+    'rejects invalid template id %s',
+    (id) => {
+      const req = { params: { id }, body: {} };
+      const res = createResponse();
+      const next = vi.fn();
+
+      validateRequestMiddleware.templateId()(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+  );
+
   it.each([
     ['EMAIL', 'user@example.com'],
     ['SMS', '+59170000000']

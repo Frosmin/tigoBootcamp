@@ -1,6 +1,10 @@
 import ultimateExpress from 'ultimate-express';
 import { healthController } from '../controllers/health.controller.js';
-import { createTemplateController } from '../controllers/template.controller.js';
+import {
+  createTemplateController,
+  deleteTemplateController,
+  updateTemplateController
+} from '../controllers/template.controller.js';
 import {
   createNotificationController,
   getNotificationController
@@ -17,6 +21,19 @@ router.post(
   '/templates',
   validateRequestMiddleware.createTemplate(),
   createTemplateController
+);
+
+router.put(
+  '/templates/:id',
+  validateRequestMiddleware.templateId(),
+  validateRequestMiddleware.updateTemplate(),
+  updateTemplateController
+);
+
+router.delete(
+  '/templates/:id',
+  validateRequestMiddleware.templateId(),
+  deleteTemplateController
 );
 
 router.get(
