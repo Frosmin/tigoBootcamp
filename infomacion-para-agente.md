@@ -11,7 +11,7 @@ para email se usar el smpt de google gmail
 para sms (aun por definir el proveedor)
 
 
-
+cosas que faltan para implementar
 1
 PUT /templates/:id y DELETE /templates/:id
 Completa primero la gestión de plantillas. Incluye validación de id, evitar actualizar a un nombre/canal ya existente y bloquear el borrado si la plantilla ya tiene notificaciones asociadas.
