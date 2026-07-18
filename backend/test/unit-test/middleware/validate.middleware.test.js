@@ -163,6 +163,31 @@ describe('validate.middleware.js', () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
+  it.each(['1', '9223372036854775807'])('accepts retry bigint id %s', (id) => {
+    const req = { params: { id }, body: {} };
+    const res = createResponse();
+    const next = vi.fn();
+
+    validateRequestMiddleware.retryNotification()(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.params).toEqual({ id });
+  });
+
+  it.each(['0', '-1', '1.5', 'abc', '9223372036854775808'])(
+    'rejects invalid retry id %s',
+    (id) => {
+      const req = { params: { id }, body: {} };
+      const res = createResponse();
+      const next = vi.fn();
+
+      validateRequestMiddleware.retryNotification()(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+  );
+
   it('applies default notification pagination', () => {
     const req = {};
     const res = createResponse();

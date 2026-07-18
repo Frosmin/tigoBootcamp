@@ -28,10 +28,10 @@ Completa primero la gestión de plantillas. Incluye validación de id, evitar ac
 GET /notifications
 Implementa el listado con filtros opcionales canal y estado, más paginación (page, limit). Es relativamente aislado y te deja verificar el historial creado por los demás flujos.
 
-3
+3(completado )
  worker BullMQ + Redis + PostgreSQL como fuente de verdad + patrón transactional outbox.
 
-4
+4(completado)
 POST /notifications/:id/retry
 Construye este endpoint sobre el worker ya funcional: valida que exista, que esté en FALLIDA, que no exceda el máximo de intentos y vuelve a encolarla aplicando el backoff exponencial. Nunca debe reenviar una notificación ENVIADA.
 

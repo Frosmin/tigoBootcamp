@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const { transactionClient } = vi.hoisted(() => ({ transactionClient: { query: vi.fn() } }));
+
 vi.mock('../../../src/repositories/template.repository.js', () => ({
   findTemplateById: vi.fn()
 }));
 vi.mock('../../../src/repositories/notification.repository.js', () => ({
   insertNotification: vi.fn(),
   findNotificationById: vi.fn(),
+  findNotificationByIdForUpdate: vi.fn(),
   findNotificationByIdempotencyKey: vi.fn(),
-  findNotificationsPage: vi.fn()
+  findNotificationsPage: vi.fn(),
+  scheduleNotificationRetry: vi.fn()
+}));
+vi.mock('../../../src/infrastructure/db.transaction.js', () => ({
+  withTransaction: vi.fn((operation) => operation(transactionClient))
 }));
 vi.mock('../../../src/repositories/attempt.repository.js', () => ({
   findAttemptsByNotificationId: vi.fn()
@@ -16,15 +23,19 @@ vi.mock('../../../src/repositories/attempt.repository.js', () => ({
 import { findTemplateById } from '../../../src/repositories/template.repository.js';
 import {
   findNotificationById,
+  findNotificationByIdForUpdate,
   findNotificationByIdempotencyKey,
   findNotificationsPage,
-  insertNotification
+  insertNotification,
+  scheduleNotificationRetry
 } from '../../../src/repositories/notification.repository.js';
 import { findAttemptsByNotificationId } from '../../../src/repositories/attempt.repository.js';
 import {
   createNotificationService,
   getNotificationService,
-  listNotificationsService
+  listNotificationsService,
+  retryBackoff,
+  retryNotificationService
 } from '../../../src/services/notification.service.js';
 
 describe('notification.service.js', () => {
@@ -187,5 +198,47 @@ describe('notification.service.js', () => {
         totalPages: 0
       }
     });
+  });
+
+  it.each([
+    [1, 1000],
+    [2, 2000],
+    [4, 8000]
+  ])('calculates retry backoff from persisted attempt %i', (attempts, expected) => {
+    expect(retryBackoff(attempts)).toBe(expected);
+  });
+
+  it('changes a failed notification to ENCOLADA and schedules its outbox', async () => {
+    const failed = { ...notification, estado: 'FALLIDA', intentos: 2 };
+    const retried = { ...failed, estado: 'ENCOLADA' };
+    findNotificationByIdForUpdate.mockResolvedValue(failed);
+    scheduleNotificationRetry.mockResolvedValue(retried);
+
+    await expect(retryNotificationService('9')).resolves.toEqual(retried);
+    expect(findNotificationByIdForUpdate).toHaveBeenCalledWith(transactionClient, '9');
+    expect(scheduleNotificationRetry).toHaveBeenCalledWith(transactionClient, '9', 2000);
+  });
+
+  it('returns NF001 when the retry target does not exist', async () => {
+    findNotificationByIdForUpdate.mockResolvedValue(undefined);
+    await expect(retryNotificationService('999')).rejects.toMatchObject({ errorCode: 'NF001' });
+    expect(scheduleNotificationRetry).not.toHaveBeenCalled();
+  });
+
+  it.each(['ENVIADA', 'ENCOLADA'])(
+    'returns CF001 when a notification is %s',
+    async (estado) => {
+      findNotificationByIdForUpdate.mockResolvedValue({ ...notification, estado, intentos: 1 });
+      await expect(retryNotificationService('9')).rejects.toMatchObject({ errorCode: 'CF001' });
+      expect(scheduleNotificationRetry).not.toHaveBeenCalled();
+    }
+  );
+
+  it('returns CF001 when the maximum persisted attempts was reached', async () => {
+    findNotificationByIdForUpdate.mockResolvedValue({
+      ...notification, estado: 'FALLIDA', intentos: 5
+    });
+    await expect(retryNotificationService('9')).rejects.toMatchObject({ errorCode: 'CF001' });
+    expect(scheduleNotificationRetry).not.toHaveBeenCalled();
   });
 });

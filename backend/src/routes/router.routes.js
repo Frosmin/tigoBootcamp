@@ -8,7 +8,8 @@ import {
 import {
   createNotificationController,
   getNotificationController,
-  listNotificationsController
+  listNotificationsController,
+  retryNotificationController
 } from '../controllers/notification.controller.js';
 import { validateRequestMiddleware } from '../middleware/validate.middleware.js';
 const { Router } = ultimateExpress;
@@ -47,6 +48,12 @@ router.get(
   '/notifications/:id',
   validateRequestMiddleware.getNotification(),
   getNotificationController
+);
+
+router.post(
+  '/notifications/:id/retry',
+  validateRequestMiddleware.retryNotification(),
+  retryNotificationController
 );
 
 router.post(

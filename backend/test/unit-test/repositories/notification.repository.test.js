@@ -9,9 +9,11 @@ vi.mock('../../../src/infrastructure/db.transaction.js', () => ({
 import { executeQuery } from '@tigo/postgres-connector';
 import {
   findNotificationById,
+  findNotificationByIdForUpdate,
   findNotificationByIdempotencyKey,
   findNotificationsPage,
-  insertNotification
+  insertNotification,
+  scheduleNotificationRetry
 } from '../../../src/repositories/notification.repository.js';
 
 describe('notification.repository.js', () => {
@@ -60,6 +62,36 @@ describe('notification.repository.js', () => {
     });
     expect(executeQuery.mock.calls[0][0]).toMatch(/WHERE id = \$1::bigint/);
     expect(executeQuery.mock.calls[0][1]).toEqual(['10']);
+  });
+
+  it('locks a notification row before evaluating a manual retry', async () => {
+    client.query.mockResolvedValue({ rows: [{ id: '10', estado: 'FALLIDA', intentos: 2 }] });
+    await expect(findNotificationByIdForUpdate(client, '10')).resolves.toMatchObject({
+      id: '10', estado: 'FALLIDA'
+    });
+    expect(client.query.mock.calls[0][0]).toMatch(/FOR UPDATE/);
+    expect(client.query.mock.calls[0][1]).toEqual(['10']);
+  });
+
+  it('updates state and creates a delayed outbox event without resetting attempts', async () => {
+    const updated = { id: '10', estado: 'ENCOLADA', intentos: 2 };
+    client.query
+      .mockResolvedValueOnce({ rows: [updated] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await expect(scheduleNotificationRetry(client, '10', 2000)).resolves.toEqual(updated);
+    expect(client.query.mock.calls[0][0]).toMatch(/SET estado = 'ENCOLADA'/);
+    expect(client.query.mock.calls[0][0]).not.toMatch(/intentos\s*=/);
+    expect(client.query.mock.calls[1][0]).toMatch(/INSERT INTO notification_outbox/);
+    expect(client.query.mock.calls[1][0]).toMatch(/INTERVAL '1 millisecond'/);
+    expect(client.query.mock.calls[1][1]).toEqual(['10', 2000]);
+  });
+
+  it('propagates an outbox failure so the surrounding transaction rolls back', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [{ id: '10', estado: 'ENCOLADA' }] })
+      .mockRejectedValueOnce(new Error('outbox failed'));
+    await expect(scheduleNotificationRetry(client, '10', 1000)).rejects.toThrow('outbox failed');
   });
 
   it('returns a filtered page with its total count', async () => {

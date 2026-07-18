@@ -23,7 +23,8 @@ vi.mock('../../../src/controllers/template.controller.js', () => ({
 vi.mock('../../../src/controllers/notification.controller.js', () => ({
   createNotificationController: 'createNotificationController',
   getNotificationController: 'getNotificationController',
-  listNotificationsController: 'listNotificationsController'
+  listNotificationsController: 'listNotificationsController',
+  retryNotificationController: 'retryNotificationController'
 }));
 vi.mock('../../../src/middleware/validate.middleware.js', () => ({
   validateRequestMiddleware: {
@@ -32,7 +33,8 @@ vi.mock('../../../src/middleware/validate.middleware.js', () => ({
     templateId: vi.fn(() => 'templateIdValidator'),
     createNotification: vi.fn(() => 'createNotificationValidator'),
     getNotification: vi.fn(() => 'getNotificationValidator'),
-    listNotifications: vi.fn(() => 'listNotificationsValidator')
+    listNotifications: vi.fn(() => 'listNotificationsValidator'),
+    retryNotification: vi.fn(() => 'retryNotificationValidator')
   }
 }));
 
@@ -71,6 +73,11 @@ describe('router.routes.js', () => {
       '/notifications/:id',
       'getNotificationValidator',
       'getNotificationController'
+    );
+    expect(mockRouter.post).toHaveBeenCalledWith(
+      '/notifications/:id/retry',
+      'retryNotificationValidator',
+      'retryNotificationController'
     );
   });
 });

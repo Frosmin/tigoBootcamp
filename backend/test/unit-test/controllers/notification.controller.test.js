@@ -3,18 +3,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../../src/services/notification.service.js', () => ({
   createNotificationService: vi.fn(),
   getNotificationService: vi.fn(),
-  listNotificationsService: vi.fn()
+  listNotificationsService: vi.fn(),
+  retryNotificationService: vi.fn()
 }));
 
 import {
   createNotificationService,
   getNotificationService,
-  listNotificationsService
+  listNotificationsService,
+  retryNotificationService
 } from '../../../src/services/notification.service.js';
 import {
   createNotificationController,
   getNotificationController,
-  listNotificationsController
+  listNotificationsController,
+  retryNotificationController
 } from '../../../src/controllers/notification.controller.js';
 import { errorCodes, setError } from '../../../src/utils/errorCodes.js';
 
@@ -129,5 +132,31 @@ describe('notification.controller.js', () => {
         message: 'Generic internal server error'
       }
     });
+  });
+
+  it('returns 202 with the retried notification', async () => {
+    const retried = { ...notification, estado: 'ENCOLADA', intentos: 2 };
+    retryNotificationService.mockResolvedValue(retried);
+
+    await retryNotificationController({ params: { id: '9' } }, res);
+
+    expect(retryNotificationService).toHaveBeenCalledWith('9');
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(res.json).toHaveBeenCalledWith(retried);
+  });
+
+  it.each([
+    [errorCodes.NOT_FOUND, 404],
+    [errorCodes.RESOURCE_CONFLICT, 409]
+  ])('maps retry %s to HTTP %i', async (errorCode, status) => {
+    retryNotificationService.mockRejectedValue(setError('expected', errorCode));
+    await retryNotificationController({ params: { id: '9' } }, res);
+    expect(res.status).toHaveBeenCalledWith(status);
+  });
+
+  it('returns 500 when retry fails unexpectedly', async () => {
+    retryNotificationService.mockRejectedValue(new Error('database unavailable'));
+    await retryNotificationController({ params: { id: '9' } }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
   });
 });

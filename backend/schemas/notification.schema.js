@@ -36,6 +36,8 @@ export const getNotificationParamsSchema = z.object({
     ))
 }).strict();
 
+export const retryNotificationParamsSchema = getNotificationParamsSchema;
+
 export const listNotificationsQuerySchema = z.object({
   canal: z.enum(['EMAIL', 'SMS']).optional(),
   estado: z.enum(['ENCOLADA', 'ENVIADA', 'FALLIDA']).optional(),

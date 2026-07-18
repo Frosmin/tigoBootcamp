@@ -1,11 +1,15 @@
 import { findTemplateById } from '../repositories/template.repository.js';
 import {
   findNotificationById,
+  findNotificationByIdForUpdate,
   findNotificationByIdempotencyKey,
   findNotificationsPage,
-  insertNotification
+  insertNotification,
+  scheduleNotificationRetry
 } from '../repositories/notification.repository.js';
 import { findAttemptsByNotificationId } from '../repositories/attempt.repository.js';
+import { withTransaction } from '../infrastructure/db.transaction.js';
+import config from '../utils/config.js';
 import { errorCodes, setError } from '../utils/errorCodes.js';
 
 const haveSameKeys = (received, required) => {
@@ -88,3 +92,26 @@ export const listNotificationsService = async ({
     }
   };
 };
+
+export const retryBackoff = (attempts) => (
+  config.RETRY_BACKOFF_MS * (2 ** Math.max(attempts - 1, 0))
+);
+
+export const retryNotificationService = async (id) => withTransaction(async (client) => {
+  const notification = await findNotificationByIdForUpdate(client, id);
+  if (!notification) {
+    throw setError('Notification not found', errorCodes.NOT_FOUND);
+  }
+  if (notification.estado !== 'FALLIDA') {
+    throw setError('Only failed notifications can be retried', errorCodes.RESOURCE_CONFLICT);
+  }
+  if (notification.intentos >= config.MAX_NOTIFICATION_ATTEMPTS) {
+    throw setError('Maximum notification attempts reached', errorCodes.RESOURCE_CONFLICT);
+  }
+
+  return scheduleNotificationRetry(
+    client,
+    id,
+    retryBackoff(notification.intentos)
+  );
+});

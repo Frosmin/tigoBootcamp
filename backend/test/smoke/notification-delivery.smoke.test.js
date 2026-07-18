@@ -12,8 +12,11 @@ import {
   createWorkerRedisConnection
 } from '../../src/infrastructure/redis.client.js';
 import { createNotificationQueue } from '../../src/queues/notification.queue.js';
+import { PermanentDeliveryError } from '../../src/providers/delivery.errors.js';
 import { insertNotification } from '../../src/repositories/notification.repository.js';
+import { retryNotificationService } from '../../src/services/notification.service.js';
 import { publishOutboxBatch } from '../../src/services/outbox.publisher.js';
+import config from '../../src/utils/config.js';
 import { createNotificationProcessor } from '../../src/workers/notification.processor.js';
 import { createNotificationWorker } from '../../src/workers/notification.worker.js';
 
@@ -67,8 +70,10 @@ describe('notification delivery smoke', () => {
     }
   });
 
-  it('moves a real PostgreSQL outbox event through real Redis to ENVIADA', async () => {
-    const emailSender = vi.fn().mockResolvedValue({ messageId: 'smoke-provider-id' });
+  it('retries a failed delivery once and never resends it after ENVIADA', async () => {
+    const emailSender = vi.fn()
+      .mockRejectedValueOnce(new PermanentDeliveryError('temporary bad configuration'))
+      .mockResolvedValueOnce({ messageId: 'smoke-provider-id' });
     const processor = createNotificationProcessor({
       emailSender,
       smsSender: vi.fn(),
@@ -113,12 +118,76 @@ describe('notification delivery smoke', () => {
           FROM notificacion WHERE id = $1;
         `, [notificationId]);
         expect(result.rows[0]).toMatchObject({
-          estado: 'ENVIADA', intentos: 1, attempts: 1
+          estado: 'FALLIDA', intentos: 1, attempts: 1
         });
       } finally {
         stateClient.release();
       }
     });
     expect(emailSender).toHaveBeenCalledOnce();
+
+    const concurrentRetries = await Promise.allSettled([
+      retryNotificationService(String(notificationId)),
+      retryNotificationService(String(notificationId))
+    ]);
+    expect(concurrentRetries.map(({ status }) => status).sort()).toEqual([
+      'fulfilled', 'rejected'
+    ]);
+    expect(concurrentRetries.find(({ status }) => status === 'rejected').reason)
+      .toMatchObject({ errorCode: 'CF001' });
+
+    const retryClient = await getDB().getConnection();
+    try {
+      const retryState = await retryClient.query(`
+        SELECT estado, intentos,
+          (SELECT COUNT(*)::integer FROM notification_outbox
+           WHERE notification_id = $1) AS outbox_events,
+          (SELECT COUNT(*)::integer FROM intento
+           WHERE notificacion_id = $1) AS attempt_rows
+        FROM notificacion WHERE id = $1;
+      `, [notificationId]);
+      expect(retryState.rows[0]).toMatchObject({
+        estado: 'ENCOLADA', intentos: 1, outbox_events: 2, attempt_rows: 1
+      });
+    } finally {
+      retryClient.release();
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, config.RETRY_BACKOFF_MS + 100));
+    await expect(publishOutboxBatch(queue, { warn: vi.fn(), error: vi.fn() }))
+      .resolves.toBeGreaterThanOrEqual(1);
+
+    await waitFor(async () => {
+      const stateClient = await getDB().getConnection();
+      try {
+        const result = await stateClient.query(`
+          SELECT estado, intentos,
+            (SELECT COUNT(*)::integer FROM intento WHERE notificacion_id = $1) AS attempts
+          FROM notificacion WHERE id = $1;
+        `, [notificationId]);
+        expect(result.rows[0]).toMatchObject({
+          estado: 'ENVIADA', intentos: 2, attempts: 2
+        });
+      } finally {
+        stateClient.release();
+      }
+    });
+    expect(emailSender).toHaveBeenCalledTimes(2);
+
+    await expect(retryNotificationService(String(notificationId)))
+      .rejects.toMatchObject({ errorCode: 'CF001' });
+    expect(emailSender).toHaveBeenCalledTimes(2);
+
+    const finalClient = await getDB().getConnection();
+    try {
+      const outbox = await finalClient.query(`
+        SELECT COUNT(*)::integer AS count
+        FROM notification_outbox
+        WHERE notification_id = $1;
+      `, [notificationId]);
+      expect(outbox.rows[0].count).toBe(2);
+    } finally {
+      finalClient.release();
+    }
   });
 });

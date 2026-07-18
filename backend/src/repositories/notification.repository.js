@@ -70,6 +70,35 @@ export const findNotificationById = async (id) => {
   return rows[0];
 };
 
+export const findNotificationByIdForUpdate = async (client, id) => {
+  const result = await client.query(`
+    SELECT ${COLUMNS}
+    FROM notificacion
+    WHERE id = $1::bigint
+    FOR UPDATE;
+  `, [id]);
+  return result.rows[0];
+};
+
+export const scheduleNotificationRetry = async (client, id, delayMs) => {
+  const result = await client.query(`
+    UPDATE notificacion
+    SET estado = 'ENCOLADA', updated_at = NOW()
+    WHERE id = $1::bigint
+    RETURNING ${COLUMNS};
+  `, [id]);
+
+  await client.query(`
+    INSERT INTO notification_outbox (notification_id, available_at)
+    VALUES (
+      $1::bigint,
+      NOW() + ($2::bigint * INTERVAL '1 millisecond')
+    );
+  `, [id, delayMs]);
+
+  return result.rows[0];
+};
+
 export const findNotificationsPage = async ({ canal, estado, limit, offset }) => {
   const filterParameters = [canal ?? null, estado ?? null];
   const filters = `

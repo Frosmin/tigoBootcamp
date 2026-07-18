@@ -47,6 +47,12 @@ completo para una instalación nueva.
 con otro payload devuelve `409`. La API responde `202` aunque Redis esté caído,
 porque el evento queda pendiente en PostgreSQL.
 
+`POST /api/v1/notifications/:id/retry` acepta únicamente una notificación
+`FALLIDA` que todavía tenga intentos disponibles. Conserva el contador, cambia
+el estado a `ENCOLADA` y crea en la misma transacción un nuevo evento outbox con
+backoff exponencial. Devuelve `202`; una notificación inexistente devuelve `404`
+y los estados `ENVIADA`, `ENCOLADA` o el máximo alcanzado devuelven `409`.
+
 EMAIL usa Nodemailer con Gmail App Password, mensaje de texto, asunto igual a
 `plantilla.nombre` y `Message-ID` determinista. SMS usa un contrato HTTP
 genérico:

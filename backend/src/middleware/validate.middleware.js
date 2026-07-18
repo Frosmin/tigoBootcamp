@@ -6,7 +6,8 @@ import {
 import {
   createNotificationSchema,
   getNotificationParamsSchema,
-  listNotificationsQuerySchema
+  listNotificationsQuerySchema,
+  retryNotificationParamsSchema
 } from '../../schemas/notification.schema.js';
 import { errorCodes } from '../utils/errorCodes.js';
 import { sendError } from '../utils/response.js';
@@ -82,5 +83,6 @@ export const validateRequestMiddleware = {
   templateId: () => validateParams(templateParamsSchema),
   createNotification: () => validateNotification,
   getNotification: () => validateParams(getNotificationParamsSchema),
+  retryNotification: () => validateParams(retryNotificationParamsSchema),
   listNotifications: () => validateQuery(listNotificationsQuerySchema)
 };
