@@ -1,16 +1,12 @@
-import { logger } from '@tigo/logger';
-import { sendError } from '../utils/response.js';
+import { checkPostgres } from '../infrastructure/postgres.transaction.js';
 
-export async function healthController(req, res) {
-  let responseBody = {};
+export const healthController = (_req, res) => res.status(200).json({ status: 'UP' });
+
+export async function readinessController(_req, res) {
   try {
-    responseBody = { status: 'UP' };
-    return res.status(200).json(responseBody);
-  } catch (error) {
-    const { statusHttp, response } = sendError(error?.errorCode);
-    responseBody = response;
-    return res.status(statusHttp).json(responseBody);
-  } finally {
-    logger.info({ '[HEALTH RESPONSE]': responseBody });
+    await checkPostgres();
+    return res.status(200).json({ status: 'READY', postgres: 'UP' });
+  } catch {
+    return res.status(503).json({ status: 'NOT_READY', postgres: 'DOWN' });
   }
 }

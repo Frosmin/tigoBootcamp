@@ -1,0 +1,48 @@
+pipeline {
+  agent any
+
+  parameters {
+    booleanParam(name: 'DEPLOY_DEV', defaultValue: false, description: 'Ejecutar despliegue Dev configurado en Jenkins')
+    booleanParam(name: 'DEPLOY_QA', defaultValue: false, description: 'Ejecutar despliegue QA configurado en Jenkins')
+    string(name: 'DEV_BASE_URL', defaultValue: '', description: 'URL Dev para DAST/K6')
+    string(name: 'QA_BASE_URL', defaultValue: '', description: 'URL QA para DAST/K6')
+  }
+
+  environment {
+    SONAR_TOKEN = credentials('sonar-token')
+    APP_SCAN_KEY = credentials('appscan-api-key')
+  }
+
+  stages {
+    stage('Install') { steps { sh 'npm ci' } }
+    stage('Unit and coverage') { steps { sh 'npm run coverage' } }
+    stage('OpenAPI contract') { steps { sh 'npm run test:openapi' } }
+    stage('Sonar SAST') { steps { sh 'npm run sonar -- -Dsonar.token=$SONAR_TOKEN' } }
+    stage('Container build') { steps { sh 'docker build -t p07-notificaciones:$BUILD_NUMBER .' } }
+    stage('Trivy') {
+      steps { sh 'trivy image --exit-code 1 --severity HIGH,CRITICAL p07-notificaciones:$BUILD_NUMBER' }
+    }
+    stage('Deploy Dev') {
+      when { expression { params.DEPLOY_DEV } }
+      steps { build job: 'p07-notificaciones-deploy-dev', parameters: [string(name: 'IMAGE_TAG', value: env.BUILD_NUMBER)] }
+    }
+    stage('DAST Dev') {
+      when { expression { params.DEPLOY_DEV && params.DEV_BASE_URL } }
+      steps { sh 'appscan.sh --key "$APP_SCAN_KEY" --url "$DEV_BASE_URL" --fail-on high' }
+    }
+    stage('K6 Dev') {
+      when { expression { params.DEPLOY_DEV && params.DEV_BASE_URL } }
+      steps { sh 'BASE_URL="$DEV_BASE_URL/api/v1" k6 run test/load/notifications.k6.js' }
+    }
+    stage('Deploy QA') {
+      when { expression { params.DEPLOY_QA } }
+      steps { build job: 'p07-notificaciones-deploy-qa', parameters: [string(name: 'IMAGE_TAG', value: env.BUILD_NUMBER)] }
+    }
+    stage('DAST QA') {
+      when { expression { params.DEPLOY_QA && params.QA_BASE_URL } }
+      steps { sh 'appscan.sh --key "$APP_SCAN_KEY" --url "$QA_BASE_URL" --fail-on high' }
+    }
+  }
+
+  post { always { archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true } }
+}

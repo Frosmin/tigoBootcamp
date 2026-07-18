@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@tigo/postgres-connector', () => ({
+vi.mock('../../../src/infrastructure/postgres.client.js', () => ({
   executeQuery: vi.fn()
 }));
 
-import { executeQuery } from '@tigo/postgres-connector';
-import { findTemplateById, insertTemplate } from '../../../src/repositories/template.repository.js';
+import { executeQuery } from '../../../src/infrastructure/postgres.client.js';
+import {
+  findTemplateById, insertTemplate, softDeleteTemplate, updateTemplate
+} from '../../../src/repositories/template.repository.js';
 
 describe('template.repository.js', () => {
   const template = {
@@ -23,7 +25,7 @@ describe('template.repository.js', () => {
 
     const [query, params] = executeQuery.mock.calls[0];
     expect(query).toMatch(/INSERT INTO plantilla/);
-    expect(query).toMatch(/ON CONFLICT \(nombre, canal\) DO NOTHING/);
+    expect(query).toMatch(/ON CONFLICT \(nombre, canal\) WHERE deleted_at IS NULL DO NOTHING/);
     expect(query).toMatch(/RETURNING id, nombre, canal, contenido, variables/);
     expect(params).toEqual([
       template.nombre,
@@ -44,7 +46,22 @@ describe('template.repository.js', () => {
     executeQuery.mockResolvedValue([{ id: 8, ...template }]);
 
     await expect(findTemplateById(8)).resolves.toEqual({ id: 8, ...template });
-    expect(executeQuery.mock.calls.at(-1)[0]).toMatch(/WHERE id = \$1::bigint/);
+    expect(executeQuery.mock.calls.at(-1)[0]).toMatch(/WHERE id = \$1::bigint AND deleted_at IS NULL/);
     expect(executeQuery.mock.calls.at(-1)[1]).toEqual([8]);
+  });
+
+  it('updates without colliding with another active name/channel', async () => {
+    executeQuery.mockResolvedValue([{ id: 8, ...template }]);
+    await expect(updateTemplate(8, template)).resolves.toEqual({ id: 8, ...template });
+    expect(executeQuery.mock.calls.at(-1)[0]).toMatch(/NOT EXISTS/);
+    expect(executeQuery.mock.calls.at(-1)[1]).toEqual([
+      8, template.nombre, template.canal, template.contenido, template.variables
+    ]);
+  });
+
+  it('soft-deletes and returns the affected identifier', async () => {
+    executeQuery.mockResolvedValue([{ id: 8 }]);
+    await expect(softDeleteTemplate(8)).resolves.toEqual({ id: 8 });
+    expect(executeQuery.mock.calls.at(-1)[0]).toMatch(/SET deleted_at=CURRENT_TIMESTAMP/);
   });
 });

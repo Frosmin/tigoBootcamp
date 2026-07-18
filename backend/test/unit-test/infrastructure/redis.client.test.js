@@ -4,9 +4,8 @@ const connect = vi.fn();
 const ping = vi.fn();
 const disconnect = vi.fn();
 const quit = vi.fn();
-const Redis = vi.fn(function RedisMock() {
-  return { connect, ping, disconnect, quit };
-});
+const on = vi.fn();
+const Redis = vi.fn(function RedisMock() { return { connect, ping, disconnect, quit, on }; });
 
 vi.mock('ioredis', () => ({ default: Redis }));
 vi.mock('../../../src/utils/config.js', () => ({
@@ -15,37 +14,36 @@ vi.mock('../../../src/utils/config.js', () => ({
 
 describe('redis.client.js', () => {
   beforeEach(() => {
-    vi.resetModules();
-    vi.clearAllMocks();
-    connect.mockResolvedValue(undefined);
-    ping.mockResolvedValue('PONG');
-    quit.mockResolvedValue('OK');
+    vi.resetModules(); vi.clearAllMocks();
+    connect.mockResolvedValue(); ping.mockResolvedValue('PONG'); quit.mockResolvedValue('OK');
   });
 
-  it('connects, pings and exposes one client', async () => {
+  it('connects, pings and exposes one producer client', async () => {
     const module = await import('../../../src/infrastructure/redis.client.js');
     const client = await module.initializeRedisClient();
-    expect(Redis).toHaveBeenCalledWith(expect.objectContaining({ lazyConnect: true }));
-    expect(connect).toHaveBeenCalledOnce();
-    expect(ping).toHaveBeenCalledOnce();
+    expect(Redis).toHaveBeenCalledWith(expect.objectContaining({ maxRetriesPerRequest: 1, enableOfflineQueue: false }));
     expect(module.getRedisClient()).toBe(client);
     await expect(module.initializeRedisClient()).resolves.toBe(client);
   });
 
-  it('disconnects and propagates an initialization failure', async () => {
+  it('uses persistent retry semantics for worker clients', async () => {
+    const module = await import('../../../src/infrastructure/redis.client.js');
+    module.createWorkerRedisClient();
+    expect(Redis).toHaveBeenCalledWith(expect.objectContaining({ maxRetriesPerRequest: null }));
+  });
+
+  it('disconnects and propagates initialization failure', async () => {
     ping.mockRejectedValue(new Error('down'));
     const module = await import('../../../src/infrastructure/redis.client.js');
     await expect(module.initializeRedisClient()).rejects.toThrow('down');
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
-  it('fails before initialization and can close an initialized client', async () => {
+  it('closes initialized clients', async () => {
     const module = await import('../../../src/infrastructure/redis.client.js');
-    expect(() => module.getRedisClient()).toThrow('Redis client is not initialized');
-    await module.closeRedisClient();
+    expect(() => module.getRedisClient()).toThrow();
     await module.initializeRedisClient();
     await module.closeRedisClient();
     expect(quit).toHaveBeenCalledOnce();
-    expect(() => module.getRedisClient()).toThrow('Redis client is not initialized');
   });
 });

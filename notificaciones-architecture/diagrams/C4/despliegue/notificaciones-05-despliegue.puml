@@ -1,0 +1,21 @@
+@startuml notificaciones-05-despliegue
+title Despliegue - réplicas independientes
+node "Cluster Dev/QA" {
+  node "API Deployment\nN réplicas" as api
+  node "Outbox Relay\n1..N réplicas" as relay
+  node "EMAIL Worker\n1..N réplicas" as worker
+}
+database "PostgreSQL HA" as db
+database "Redis persistente\nAOF everysec / noeviction" as redis
+cloud "Google Gmail SMTP" as gmail
+api --> db : SQL
+relay --> db : SQL / SKIP LOCKED
+relay --> redis : BullMQ addBulk
+worker --> redis : BullMQ Worker
+worker --> db : SQL / leases
+worker --> gmail : SMTP/TLS
+note right of worker
+  Concurrency local configurable.
+  Rate limit global por cola.
+end note
+@enduml

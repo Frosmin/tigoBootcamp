@@ -1,14 +1,19 @@
 {
-  "name": "tigo.micro.template",
+  "name": "tigo.micro.notifications",
   "version": "1.0.0",
-  "description": "Template base para microservicios Node.js",
+  "description": "Microservicio P07 de notificaciones asincronas",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "test": "vitest run test/unit-test/",
     "start": "node index.js",
+    "start:api": "node index.js",
+    "start:outbox": "node outbox.js",
+    "start:worker": "node worker.js",
     "dev": "node --watch index.js",
     "coverage": "vitest run --coverage test/unit-test/",
+    "test:integration": "vitest run test/integration/ --passWithNoTests",
+    "test:openapi": "node scripts/validate-openapi.js",
     "sonar": "sonar"
   },
   "repository": {
@@ -18,19 +23,23 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@tigo/error-code": "^1.0.20",
-    "@tigo/logger": "^1.0.1",
-    "@tigo/postgres-connector": "^1.1.0",
     "body-parser": "^2.2.0",
+    "bullmq": "^5.80.8",
     "dotenv": "^17.2.3",
     "express-prom-bundle": "^8.0.0",
     "helmet": "^8.1.0",
     "ioredis": "5.5.0",
     "luxon": "^3.7.2",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.13.1",
+    "pino": "^9.6.0",
     "ultimate-express": "2.0.9",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
+    "@emnapi/core": "1.11.2",
+    "@emnapi/runtime": "1.11.2",
     "@sonar/scan": "^4.4.0",
     "@vitest/coverage-v8": "^4.0.7",
     "node-mocks-http": "^1.17.2",

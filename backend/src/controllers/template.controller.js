@@ -1,20 +1,27 @@
-import { logger } from '@tigo/logger';
-import { createTemplateService } from '../services/template.service.js';
+import { logger } from '../infrastructure/logger.js';
+import {
+  createTemplateService, deleteTemplateService, updateTemplateService
+} from '../services/template.service.js';
 import { sendError } from '../utils/response.js';
 
-export async function createTemplateController(req, res) {
-  let responseBody = {};
-  logger.startTimer('ExecutionTimeAll');
-
+const execute = async (res, operation, successStatus) => {
   try {
-    responseBody = await createTemplateService(req.body);
-    return res.status(201).json(responseBody);
+    const body = await operation();
+    if (successStatus === 204) return res.status(204).send();
+    return res.status(successStatus).json(body);
   } catch (error) {
+    logger.error({ '[TEMPLATE ERROR]': error.message });
     const { statusHttp, response } = sendError(error?.errorCode);
-    responseBody = response;
-    return res.status(statusHttp).json(responseBody);
-  } finally {
-    logger.info({ '[RESPONSE BODY]': responseBody });
-    logger.endTimer('ExecutionTimeAll');
+    return res.status(statusHttp).json(response);
   }
-}
+};
+
+export const createTemplateController = (req, res) => execute(
+  res, () => createTemplateService(req.body), 201
+);
+export const updateTemplateController = (req, res) => execute(
+  res, () => updateTemplateService(req.params.id, req.body), 200
+);
+export const deleteTemplateController = (req, res) => execute(
+  res, () => deleteTemplateService(req.params.id), 204
+);

@@ -1,86 +1,15 @@
 @startuml notificaciones-03-bp-consulta-historial
-
-title Consulta de Estado y Historial
-
-skinparam backgroundColor white
-skinparam shadowing false
-skinparam activity {
-    BackgroundColor white
-    BorderColor #1676D2
-    FontColor #000000
-    DiamondBackgroundColor #FFF2CC
-    DiamondBorderColor #C99A00
-    StartColor #222222
-    EndColor #222222
-    BarColor #1676D2
-}
-skinparam swimlane {
-    BorderColor #8AB4E8
-    TitleBackgroundColor #E8F1FB
-    TitleFontColor #003B70
-}
-
-|Servicio interno emisor|
+title BP - Estado e historial paginado
 start
-:Seleccionar consulta;
-
-if (¿Tipo de consulta?) then (Estado por id)
-    :Consultar notificación\nGET /api/v1/notifications/{id};
-    |API REST|
-    :Validar parámetro id;
-    if (¿Solicitud válida?) then (Sí)
-        :Buscar notificación en PostgreSQL;
-        if (¿Notificación existente?) then (Sí)
-            :Consultar intentos ordenados\npor número ascendente;
-            |Servicio interno emisor|
-            :Recibir HTTP 200 con recurso,\ncontador intentos e historialIntentos;
-            note right
-              Estados posibles:
-              ENCOLADA
-              ENVIADA
-              FALLIDA
-              historialIntentos puede ser []
-            end note
-            stop
-        else (No)
-            |API REST|
-            :Preparar error NOTIFICATION_NOT_FOUND;
-            |Servicio interno emisor|
-            :Recibir HTTP 404;
-            stop
-        endif
-    else (No)
-        |Servicio interno emisor|
-        :Recibir HTTP 400;
-        stop
-    endif
-
-else (Historial)
-    :Listar historial con filtros\nGET /api/v1/notifications?canal&estado&page&pageSize;
-    |API REST|
-    :Validar filtros y paginación;
-    if (¿Filtros y paginación válidos?) then (Sí)
-        :Consultar página en PostgreSQL\naplicando canal y estado opcionales;
-        if (¿Existen resultados?) then (Sí)
-            |Servicio interno emisor|
-            :Recibir HTTP 200 con elementos\ny metadatos de paginación;
-            stop
-        else (No)
-            |Servicio interno emisor|
-            :Recibir HTTP 200 con lista vacía\ny metadatos de paginación;
-            stop
-        endif
-    else (No)
-        |Servicio interno emisor|
-        :Recibir HTTP 400;
-        stop
-    endif
+if (¿GET /notifications/{id}?) then (sí)
+  :Validar BIGINT;
+  :Consultar notificación e intentos ordenados;
+  :200 o 404;
+else (listado)
+  :Validar canal, estado, limit y cursor;
+  :Decodificar cursor created_at + id;
+  :Consulta keyset con limit + 1;
+  :Devolver items y nextCursor;
 endif
-
-legend right
-|= RF |= Endpoint |
-| RF-7.3 | GET /api/v1/notifications/{id} |
-| RF-7.5 | GET /api/v1/notifications?canal&estado&page&pageSize |
-endlegend
-
+stop
 @enduml

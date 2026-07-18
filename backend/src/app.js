@@ -3,7 +3,7 @@ import promBundle from 'express-prom-bundle';
 import helmet from 'helmet';
 import routerRoutes from './routes/router.routes.js';
 import bodyParser from 'body-parser';
-import { httpLoggerMiddleware } from '@tigo/logger';
+import { safeHttpLoggerMiddleware } from './middleware/request.logging.middleware.js';
 import config from './utils/config.js';
 const app = ultimateExpress({ threads: 0 });
 
@@ -11,9 +11,9 @@ app.use(helmet());
 const metricsMiddleware = promBundle({ includeMethod: true });
 
 app.disable('x-powered-by');
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '64kb' }));
 
-app.use(httpLoggerMiddleware());
+app.use(safeHttpLoggerMiddleware());
 app.use(metricsMiddleware);
 
 app.use(helmet.noSniff());

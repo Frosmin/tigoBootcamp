@@ -14,7 +14,9 @@ vi.mock('helmet', () => {
   return { default: helmetMock };
 });
 vi.mock('body-parser', () => ({ default: { json: vi.fn(() => 'jsonMiddleware') } }));
-vi.mock('@tigo/logger', () => ({ httpLoggerMiddleware: vi.fn(() => 'httpLoggerMiddleware') }));
+vi.mock('../../src/middleware/request.logging.middleware.js', () => ({
+  safeHttpLoggerMiddleware: vi.fn(() => 'httpLoggerMiddleware')
+}));
 vi.mock('../../src/routes/router.routes.js', () => ({ default: 'routerRoutes' }));
 vi.mock('../../src/utils/config.js', () => ({
   default: { API_BASE_PATH: '/api/v1' }

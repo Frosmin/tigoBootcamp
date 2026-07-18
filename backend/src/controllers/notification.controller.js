@@ -1,41 +1,34 @@
-import { logger } from '@tigo/logger';
+import { logger } from '../infrastructure/logger.js';
 import {
-  createNotificationService,
-  getNotificationService
+  createNotificationService, getNotificationService,
+  listNotificationsService, retryNotificationService
 } from '../services/notification.service.js';
 import { sendError } from '../utils/response.js';
 
-export async function createNotificationController(req, res) {
-  let responseBody = {};
-  logger.startTimer('ExecutionTimeAll');
+const errorResponse = (res, error) => {
+  logger.error({ '[NOTIFICATION ERROR]': error.message });
+  const { statusHttp, response } = sendError(error?.errorCode);
+  return res.status(statusHttp).json(response);
+};
 
+export async function createNotificationController(req, res) {
   try {
     const result = await createNotificationService(req.body, req.idempotencyKey);
-    responseBody = result.notification;
-    return res.status(result.created ? 202 : 200).json(responseBody);
-  } catch (error) {
-    const { statusHttp, response } = sendError(error?.errorCode);
-    responseBody = response;
-    return res.status(statusHttp).json(responseBody);
-  } finally {
-    logger.info({ '[RESPONSE BODY]': responseBody });
-    logger.endTimer('ExecutionTimeAll');
-  }
+    return res.status(result.created ? 202 : 200).json(result.notification);
+  } catch (error) { return errorResponse(res, error); }
 }
 
 export async function getNotificationController(req, res) {
-  let responseBody = {};
-  logger.startTimer('ExecutionTimeAll');
+  try { return res.status(200).json(await getNotificationService(req.params.id)); }
+  catch (error) { return errorResponse(res, error); }
+}
 
-  try {
-    responseBody = await getNotificationService(req.params.id);
-    return res.status(200).json(responseBody);
-  } catch (error) {
-    const { statusHttp, response } = sendError(error?.errorCode);
-    responseBody = response;
-    return res.status(statusHttp).json(responseBody);
-  } finally {
-    logger.info({ '[RESPONSE BODY]': responseBody });
-    logger.endTimer('ExecutionTimeAll');
-  }
+export async function listNotificationsController(req, res) {
+  try { return res.status(200).json(await listNotificationsService(req.query)); }
+  catch (error) { return errorResponse(res, error); }
+}
+
+export async function retryNotificationController(req, res) {
+  try { return res.status(202).json(await retryNotificationService(req.params.id)); }
+  catch (error) { return errorResponse(res, error); }
 }

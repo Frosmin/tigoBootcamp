@@ -1,67 +1,21 @@
 @startuml notificaciones-07-lld-plantillas
-skinparam backgroundColor #FFFFFF
-skinparam shadowing false
-skinparam sequenceMessageAlign center
-skinparam sequence {
-    ArrowColor #1168BD
-    LifeLineBorderColor #1168BD
-    ParticipantBorderColor #003865
-    ParticipantBackgroundColor #003865
-    ParticipantFontColor #FFFFFF
-    ActorBorderColor #003865
-}
-
-title LLD - Gestión de Plantillas
-
-actor "Servicio interno" as emisor
-participant "Middleware\nde validación" as validation
-participant "Controlador" as controller
-participant "Servicio de\nPlantillas" as service
-participant "Repositorio de\nPlantillas" as repository
-database "PostgreSQL" as db
-
-== Crear ==
-emisor -> validation : POST /api/v1/templates
-validation -> validation : validar body con Zod
-alt datos inválidos
-    validation --> emisor : 400 Bad Request
-else datos válidos
-    validation -> controller : create + body
-    controller -> service : crear
-    service -> repository : guardar si nombre y canal son únicos
-    repository -> db : consulata create
-    alt nombre duplicado en el canal
-        controller --> emisor : 409 Conflict
-    else plantilla creada
-        controller --> emisor : 201 Created
-    end
+title LLD - Gestión de plantillas
+actor Emisor
+participant API
+participant Zod
+participant TemplateService
+participant Renderer
+database PostgreSQL
+Emisor -> API : POST/PUT/DELETE /templates
+API -> Zod : validar body/id estricto
+Zod -> TemplateService : comando normalizado
+TemplateService -> Renderer : placeholders == variables[]
+Renderer --> TemplateService : válido/error 400
+alt crear o actualizar
+  TemplateService -> PostgreSQL : nombre único por canal activo
+  PostgreSQL --> API : 201/200 o 409
+else eliminar
+  TemplateService -> PostgreSQL : deleted_at = now()
+  PostgreSQL --> API : 204 o 404
 end
-
-== Actualizar  ==
-emisor -> validation : PUT /api/v1/templates/{id}
-validation -> controller : update(id, body)
-controller -> service : actualizar(id, body)
-service -> repository : buscar y guardar cambios
-repository -> db : consulta update
-    alt Error al crear la actualizar la plantilla
-        controller --> emisor : 404 error 
-    else plantilla actualizada
-        controller --> emisor : 201 updated
-    end
-
-
-== Eliminar  ==
-emisor -> validation : DELETE /api/v1/templates/{id}
-validation -> controller : delete(id)
-controller -> service : eliminar(id)
-service -> repository : buscar y eliminar
-repository -> db : consulta delete
-    alt no se pudo eliminar la plantilla
-        controller --> emisor : 404 error 
-    else plantilla eliminada
-        controller --> emisor : 201 deleted
-    end
-
-
-
 @enduml

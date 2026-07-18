@@ -2,16 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../src/services/notification.service.js', () => ({
   createNotificationService: vi.fn(),
-  getNotificationService: vi.fn()
+  getNotificationService: vi.fn(),
+  listNotificationsService: vi.fn(),
+  retryNotificationService: vi.fn()
 }));
 
 import {
   createNotificationService,
-  getNotificationService
+  getNotificationService, listNotificationsService, retryNotificationService
 } from '../../../src/services/notification.service.js';
 import {
   createNotificationController,
-  getNotificationController
+  getNotificationController, listNotificationsController, retryNotificationController
 } from '../../../src/controllers/notification.controller.js';
 import { errorCodes, setError } from '../../../src/utils/errorCodes.js';
 
@@ -97,5 +99,33 @@ describe('notification.controller.js', () => {
     await getNotificationController({ params: { id: '9' } }, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it('returns a cursor page', async () => {
+    const page = { items: [notification], page: { limit: 20, nextCursor: null } };
+    listNotificationsService.mockResolvedValue(page);
+    await listNotificationsController({ query: { canal: 'EMAIL' } }, res);
+    expect(listNotificationsService).toHaveBeenCalledWith({ canal: 'EMAIL' });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(page);
+  });
+
+  it('maps listing failures', async () => {
+    listNotificationsService.mockRejectedValue(setError('bad cursor', errorCodes.MISSING_REQUIRED_PARAMETER));
+    await listNotificationsController({ query: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('returns 202 for an accepted manual retry', async () => {
+    retryNotificationService.mockResolvedValue({ ...notification, generacion: 2 });
+    await retryNotificationController({ params: { id: '9' } }, res);
+    expect(retryNotificationService).toHaveBeenCalledWith('9');
+    expect(res.status).toHaveBeenCalledWith(202);
+  });
+
+  it('maps conflicting manual retry to 409', async () => {
+    retryNotificationService.mockRejectedValue(setError('invalid state', errorCodes.RESOURCE_CONFLICT));
+    await retryNotificationController({ params: { id: '9' } }, res);
+    expect(res.status).toHaveBeenCalledWith(409);
   });
 });

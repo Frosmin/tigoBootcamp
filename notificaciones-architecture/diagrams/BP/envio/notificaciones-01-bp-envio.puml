@@ -1,136 +1,52 @@
 @startuml notificaciones-01-bp-envio
-
-title Envío de Notificación
-
-skinparam backgroundColor white
-skinparam shadowing false
-skinparam activity {
-    BackgroundColor white
-    BorderColor #1676D2
-    FontColor #000000
-    DiamondBackgroundColor #FFF2CC
-    DiamondBorderColor #C99A00
-    StartColor #222222
-    EndColor #222222
-    BarColor #1676D2
-}
-skinparam swimlane {
-    BorderColor #8AB4E8
-    TitleBackgroundColor #E8F1FB
-    TitleFontColor #003B70
-}
-
-|Servicio interno emisor|
+title BP - Envío durable de notificación
+|Servicio interno|
 start
-:Solicitar envío\nPOST /api/v1/notifications;
-
-note right
-  canal: EMAIL o SMS
-  destinatario
-  plantillaId
-  variables
-  Header Idempotency-Key
-end note
-
+:POST /api/v1/notifications\nIdempotency-Key;
 |API REST|
-:Validar formato y datos con Zod;
-
-if (¿Solicitud válida?) then (Sí)
-    :Buscar plantilla en PostgreSQL;
-    if (¿Plantilla existente?) then (Sí)
-        :Validar variables requeridas;
-        if (¿Variables exactas?) then (Sí)
-            :Insertar ENCOLADA con clave de\nidempotencia única en PostgreSQL;
-            if (¿Solicitud duplicada?) then (Sí)
-                :Consultar notificación existente\nen PostgreSQL;
-                if (¿Mismo payload?) then (Sí)
-                    |Servicio interno emisor|
-                    :Recibir HTTP 200 con recurso existente\nsin generar otro envío;
-                    stop
-                else (No)
-                    |Servicio interno emisor|
-                    :Recibir HTTP 409 Conflict;
-                    stop
-                endif
-            else (No)
-                |API REST|
-                :XADD notificationId\na notifications:dispatch;
-                if (¿Publicación exitosa?) then (Sí)
-                    |Servicio interno emisor|
-                    :Recibir HTTP 202 Accepted\ncon recurso ENCOLADA;
-                else (No)
-                    |API REST|
-                    :Eliminar notificación nueva\ncomo compensación;
-                    |Servicio interno emisor|
-                    :Recibir HTTP 503;
-                    stop
-                endif
-            endif
-        else (No)
-            :Rechazar por variables faltantes Error;
-            |Servicio interno emisor|
-            stop
-        endif
-    else (No)
-        :Rechazar por plantilla inexistente Error;
-        |Servicio interno emisor|
-        
-        stop
-    endif
-else (No)
-    :Rechazar solicitud inválida;
-    |Servicio interno emisor|
-    
+:Validar Zod, plantilla, canal y variables;
+if (¿Válida?) then (sí)
+  :Renderizar snapshot;
+  :BEGIN PostgreSQL;
+  :INSERT notificación ENCOLADA;
+  :INSERT outbox generación 1;
+  :COMMIT;
+  if (¿Clave existente?) then (sí)
+    :Comparar payload;
+    |Servicio interno|
+    :200 existente o 409 conflicto;
     stop
+  else (no)
+    |Servicio interno|
+    :202 Accepted;
+  endif
+else (no)
+  |Servicio interno|
+  :400 / 404 / 503;
+  stop
 endif
-
-|Worker de envíos|
-:Consumir trabajo de Redis;
-:Consultar notificación y plantilla\nen PostgreSQL;
-
-if (¿Notificación ya ENVIADA?) then (Sí)
-    :Descartar trabajo duplicado;
-    stop
-else (No)
-    :Solicitar permiso al limitador\nde throughput en Redis;
-    if (¿Hay capacidad de envío?) then (Sí)
-        :Renderizar plantilla;
-        :Invocar librería genérica\nde email/SMS;
-|Proveedor externo email/SMS|
-        :Procesar entrega;
-        :Devolver éxito o fallo;
-        |Worker de envíos|
-        if (¿Envío exitoso?) then (Sí)
-            :Persistir intento EXITOSO;
-            :Actualizar notificación\nestado = ENVIADA;
-            stop
-        else (No)
-            :Persistir intento FALLIDO\ny causa del error;
-            if (¿Error reintentable y\nquedan intentos?) then (Sí)
-                :Calcular backoff exponencial;
-                :Programar trabajo diferido\nen Redis;
-                note right
-                  El worker no espera ni se bloquea.
-                  Otro ciclo consumirá el trabajo
-                  cuando venza el backoff.
-                end note
-                stop
-            else (No)
-                :Actualizar notificación\nestado = FALLIDA;
-                stop
-            endif
-        endif
-    else (No)
-        :Reprogramar trabajo en Redis\nsin consumir un intento;
-        stop
+|Outbox Relay|
+:Reclamar lote con SKIP LOCKED;
+:BullMQ addBulk\njobId notification-id-generation;
+:Marcar outbox PUBLISHED;
+|BullMQ Worker|
+:Aplicar rate limit global;
+:Claim PostgreSQL con lease;
+if (¿Ya enviada o generación vieja?) then (sí)
+  :Completar sin entregar;
+  stop
+else (no)
+  :Enviar por conector;
+  if (¿Éxito?) then (sí)
+    :Registrar intento + ENVIADA;
+  else (no)
+    :Registrar intento FALLIDO;
+    if (¿Temporal y quedan intentos?) then (sí)
+      :Lanzar Error; BullMQ aplica backoff;
+    else (no)
+      :Marcar FALLIDA y UnrecoverableError;
     endif
+  endif
 endif
-
-legend right
-|= RF |= Cobertura |
-| RF-7.1 | Crear y procesar una notificación |
-| Estado inicial | ENCOLADA |
-| Resultado | ENVIADA o FALLIDA |
-endlegend
-
+stop
 @enduml

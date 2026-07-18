@@ -1,21 +1,18 @@
 import { z } from 'zod';
 
-const variableSchema = z.string()
-  .trim()
-  .min(1)
-  .max(100);
+const variableSchema = z.string().trim().min(1).max(100)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 
-export const createTemplateSchema = z.object({
+export const templateBodySchema = z.object({
   nombre: z.string().trim().min(1).max(100),
   canal: z.enum(['EMAIL', 'SMS']),
-  contenido: z.string().refine((value) => value.trim().length > 0),
-  variables: z.array(variableSchema).superRefine((variables, context) => {
-    const uniqueVariables = new Set(variables);
-    if (uniqueVariables.size !== variables.length) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Las variables no pueden repetirse'
-      });
+  contenido: z.string().min(1).max(20000).refine((value) => value.trim().length > 0),
+  variables: z.array(variableSchema).max(100).superRefine((variables, context) => {
+    if (new Set(variables).size !== variables.length) {
+      context.addIssue({ code: 'custom', message: 'Las variables no pueden repetirse' });
     }
   })
 }).strict();
+
+export const createTemplateSchema = templateBodySchema;
+export const updateTemplateSchema = templateBodySchema;

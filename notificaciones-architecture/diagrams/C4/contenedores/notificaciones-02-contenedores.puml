@@ -1,29 +1,25 @@
 @startuml notificaciones-02-contenedores
-!define RELATIVE_INCLUDE "."
 !include ../../../../notificaciones-architecture/binariess/C4_Container.puml
-
 LAYOUT_LEFT_RIGHT()
-
-title Diagrama de Contenedores (C2) - Notificaciones
-
-Person(emisores, "Emisores", "Servicios internos.")
-System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega mensajes por email y SMS.")
-
-System_Boundary(p07, "Microservicio P07 Notificaciones") {
-    Container(api, "API REST", "Node.js / ultimate-express / Zod", "Expone api para crear y consultar notificaciones, reintentar fallos y administrar plantillas.")
-    Container(worker, "Worker de envíos", "Node.js 22", "Consume trabajos pendientes, renderiza plantillas, controla el throughput, realiza envíos y programa reintentos con backoff exponencial.")
-    ContainerDb(db, "Base de datos", "PostgreSQL", "Persiste plantillas, notificaciones, claves de idempotencia, estados e intentos de entrega.")
-    ContainerDb(redis, "Cola y coordinación", "Redis Streams", "Mantiene la cola, trabajos diferidos y contadores de throughput.")
+title C2 - Contenedores P07 Notificaciones
+Person(emisores, "Servicios internos", "Emisores autenticados.")
+System_Ext(gmail, "Gmail SMTP", "Proveedor externo de email.")
+System_Ext(sms, "SMS futuro", "Proveedor aún no definido.")
+System_Boundary(p07, "P07 Notificaciones") {
+  Container(api, "API REST", "Node.js 22 / ultimate-express / Zod", "Valida, persiste y consulta sin depender de Redis.")
+  Container(relay, "Outbox Relay", "Node.js 22 / BullMQ Queue", "Reclama outbox por lotes y publica jobs idempotentes.")
+  Container(workerEmail, "Worker EMAIL", "Node.js 22 / BullMQ Worker / Nodemailer", "Aplica rate limit, backoff y entrega SMTP.")
+  Container(workerSms, "Worker SMS futuro", "Node.js 22 / BullMQ Worker", "Puerto deshabilitado hasta definir proveedor.")
+  ContainerDb(db, "PostgreSQL", "PostgreSQL 15", "Fuente de verdad: plantillas, snapshots, estado, intentos y outbox.")
+  ContainerDb(redis, "Redis + BullMQ", "Redis 8 AOF/noeviction", "Colas por canal, delayed jobs, locks y métricas.")
 }
-
-Rel(emisores, api, "Envía, consulta, reintenta, lista y gestiona plantillas", "HTTPS / REST / JSON")
-Rel(api, db, "Lee y persiste plantillas, notificaciones e intentos", "SQL")
-Rel(api, redis, "Publica envíos mediante XADD", "RESP")
-
-Rel(worker, redis, "Consume trabajos y aplica backoff, idempotencia y límite por minuto", "RESP")
-Rel(worker, db, "Lee plantillas y actualiza estados e intentos", "SQL")
-Rel(worker, proveedor, "Envía email o SMS mediante un conector genérico", "Librería sms y email / HTTPS")
-Rel(proveedor, worker, "Devuelve éxito o fallo", "Respuesta API")
-
+Rel(emisores, api, "RF-7.1 a RF-7.5", "HTTPS/REST/JSON")
+Rel(api, db, "Transacciones y consultas", "SQL")
+Rel(relay, db, "FOR UPDATE SKIP LOCKED", "SQL")
+Rel(relay, redis, "Queue.addBulk con jobId determinista", "RESP")
+Rel(workerEmail, redis, "Consume, limita y reintenta", "RESP")
+Rel(workerEmail, db, "Claim lease y registra intentos/estado", "SQL")
+Rel(workerEmail, gmail, "Mensaje con Message-ID estable", "SMTP/TLS")
+Rel(workerSms, sms, "Integración futura", "API")
 SHOW_LEGEND()
 @enduml

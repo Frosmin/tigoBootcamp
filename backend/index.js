@@ -1,14 +1,18 @@
 import 'dotenv/config';
-import { initializeDB } from '@tigo/postgres-connector';
+import { closeAllConnections, initializeDB } from './src/infrastructure/postgres.client.js';
 import app from './src/app.js';
-import { initializeRedisClient } from './src/infrastructure/redis.client.js';
+import config from './src/utils/config.js';
 
-const PORT = process.env.PORT || 3000;
-
-// Inicializa el pool de conexiones a Postgres antes de aceptar trafico.
 await initializeDB();
-await initializeRedisClient();
-
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+const server = app.listen(config.PORT, () => {
+  console.log(`Servidor corriendo en http://localhost:${config.PORT}`);
 });
+
+const shutdown = async () => {
+  server.close(async () => {
+    await closeAllConnections();
+    process.exit(0);
+  });
+};
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

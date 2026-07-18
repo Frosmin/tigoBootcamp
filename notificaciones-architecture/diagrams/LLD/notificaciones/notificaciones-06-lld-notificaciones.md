@@ -1,52 +1,24 @@
-# LLD - API de Notificaciones
+# LLD - Notificaciones
 
-**Stack:** Node.js, ultimate-express, Zod, PostgreSQL y Redis
-**Diagrama:** [notificaciones-06-lld-notificaciones.puml](notificaciones-06-lld-notificaciones.puml)
+**Stack:** Node.js 22, ultimate-express, Zod, PostgreSQL 15, Redis 8 y BullMQ 5.
 
-El módulo recibe solicitudes de servicios internos que ya fueron autenticados por
-la infraestructura anterior. P07 no valida tokens, usuarios ni permisos; únicamente
-valida los datos de entrada y las reglas de negocio.
+La API confirma una notificación `ENCOLADA` y su outbox en una transacción. No
+abre una conexión Redis, de modo que una caída de Redis no pierde ni rechaza el
+trabajo ya durable. El relay publica por canal con `addBulk` y job ID
+`notification-{id}-g{generacion}`.
 
-## Endpoints
+El worker reclama un lease condicional en PostgreSQL. Estados enviados,
+generaciones antiguas y jobs duplicados terminan sin llamar al proveedor. Cada
+invocación real produce un `intento`; éxito e intento se confirman juntos.
 
-| Método | Ruta | Resultado principal |
-|---|---|---|
-| `POST` | `/api/v1/notifications` | Valida la plantilla y sus variables, persiste en `ENCOLADA` y publica el trabajo. |
-| `GET` | `/api/v1/notifications/{id}` | Devuelve el recurso, el contador y `historialIntentos` ordenado. |
-| `GET` | `/api/v1/notifications?canal&estado&page&pageSize` | Devuelve el historial filtrado y paginado. |
-| `POST` | `/api/v1/notifications/{id}/retry` | Programa un reintento de una notificación `FALLIDA`. |
+Los errores temporales consumen hasta tres intentos automáticos por generación
+con backoff exponencial y jitter. El máximo total es cinco. Un reintento manual
+solo acepta `FALLIDA`, incrementa generación y usa los intentos restantes.
 
-## Reglas
+El listado usa `(created_at,id)` como cursor keyset, evitando offsets crecientes.
 
-- Estados permitidos: `ENCOLADA`, `ENVIADA` y `FALLIDA`.
-- El identificador se valida como `BIGINT` positivo y se conserva como texto
-  para no perder precisión en JavaScript.
-- Las variables faltantes bloquean el envío.
-- El header `Idempotency-Key` es obligatorio. La misma clave y payload devuelve
-  la notificación existente; reutilizarla con otro payload devuelve `409`.
-- Una notificación `ENVIADA` no se reenvía.
-- Los reintentos usan backoff exponencial hasta el máximo configurable.
-- El throughput máximo por minuto es configurable.
+## Semántica SMTP
 
-## Entrega
-
-El worker consume Redis, renderiza la plantilla y usa una librería genérica de
-terceros para comunicarse con el proveedor externo de email/SMS. Cada resultado
-se registra como un intento en PostgreSQL.
-
-La unicidad idempotente se garantiza en PostgreSQL y Redis Streams se usa solo
-como cola. Como ambas escrituras no comparten una transacción, la API elimina de
-forma compensatoria la notificación nueva si falla `XADD`. Una evolución de mayor
-garantía debería usar un transactional outbox y un publicador independiente.
-
-## Errores esperados
-
-| HTTP | Uso |
-|---|---|
-| `400` | Datos, filtros, id o variables inválidos. |
-| `404` | Plantilla o notificación inexistente. |
-| `409` | Duplicidad o reintento no permitido. |
-| `500/503` | Falla interna o dependencia no disponible. |
-
-No se definen respuestas `401` o `403`, porque autenticación y autorización están
-fuera del alcance del microservicio.
+El `Message-ID` es determinista. Aun así, SMTP no puede participar en el commit:
+un crash posterior al ACK y anterior a PostgreSQL conserva una ventana residual
+de repetición. No se sacrifica entrega marcando `ENVIADA` antes del proveedor.

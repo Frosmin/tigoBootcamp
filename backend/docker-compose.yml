@@ -1,31 +1,98 @@
+x-app-environment: &app-environment
+  P_DB_HOST: ${P_DB_HOST:-db}
+  P_DB_PORT: ${P_DB_PORT:-5432}
+  P_DB_NAME: ${P_DB_NAME:-mydatabase}
+  P_DB_USER: ${P_DB_USER:-postgres}
+  P_DB_PASSWORD: ${P_DB_PASSWORD:-postgres123}
+  P_DB_MAX_CONNECTIONS: ${P_DB_MAX_CONNECTIONS:-20}
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+  DELIVERY_PROVIDER: ${DELIVERY_PROVIDER:-fake}
+
 services:
   db:
     image: postgres:15-alpine
-    container_name: postgres-db
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_DB: mydatabase
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
+    ports: ["5432:5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./tablas.sql:/docker-entrypoint-initdb.d/001-notificaciones.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mydatabase"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   redis:
     image: redis:8-alpine
-    container_name: redis-notificaciones
     restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    ports: ["6379:6379"]
+    volumes: ["redis_data:/data"]
     command:
       - redis-server
       - --requirepass
-      - "redis123"
+      - redis123
       - --appendonly
       - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    command: ["node", "index.js"]
+    env_file:
+      - path: .env
+        required: false
+    environment: *app-environment
+    ports: ["3050:3050"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+  outbox:
+    build: .
+    command: ["node", "outbox.js"]
+    env_file:
+      - path: .env
+        required: false
+    environment: *app-environment
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  email-worker:
+    build: .
+    command: ["node", "worker.js"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *app-environment
+      WORKER_CHANNEL: EMAIL
+      WORKER_HEALTH_PORT: 3051
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3051/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 volumes:
   postgres_data:

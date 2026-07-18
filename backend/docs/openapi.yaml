@@ -1,0 +1,171 @@
+openapi: 3.1.0
+info:
+  title: P07 Notificaciones API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200': { description: Proceso vivo }
+  /ready:
+    get:
+      operationId: readiness
+      responses:
+        '200': { description: PostgreSQL disponible }
+        '503': { $ref: '#/components/responses/Error' }
+  /templates:
+    post:
+      operationId: createTemplate
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/TemplateInput' } }
+      responses:
+        '201': { description: Creada, content: { application/json: { schema: { $ref: '#/components/schemas/Template' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /templates/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      operationId: updateTemplate
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/TemplateInput' } }
+      responses:
+        '200': { description: Actualizada, content: { application/json: { schema: { $ref: '#/components/schemas/Template' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteTemplate
+      responses:
+        '204': { description: Eliminada }
+        '404': { $ref: '#/components/responses/Error' }
+  /notifications:
+    post:
+      operationId: createNotification
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/NotificationInput' } }
+      responses:
+        '200': { description: Solicitud idempotente existente, content: { application/json: { schema: { $ref: '#/components/schemas/Notification' } } } }
+        '202': { description: Aceptada, content: { application/json: { schema: { $ref: '#/components/schemas/Notification' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+    get:
+      operationId: listNotifications
+      parameters:
+        - { name: canal, in: query, schema: { $ref: '#/components/schemas/Channel' } }
+        - { name: estado, in: query, schema: { $ref: '#/components/schemas/Status' } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Página de resultados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+                  page:
+                    type: object
+                    required: [limit, nextCursor]
+                    properties:
+                      limit: { type: integer }
+                      nextCursor: { type: [string, 'null'] }
+  /notifications/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      operationId: getNotification
+      responses:
+        '200': { description: Estado e intentos, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationDetail' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /notifications/{id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      operationId: retryNotification
+      responses:
+        '202': { description: Reintento aceptado, content: { application/json: { schema: { $ref: '#/components/schemas/Notification' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, pattern: '^[1-9][0-9]*$' } }
+  responses:
+    Error:
+      description: Error estandarizado
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+  schemas:
+    Channel: { type: string, enum: [EMAIL, SMS] }
+    Status: { type: string, enum: [ENCOLADA, ENVIADA, FALLIDA] }
+    Variables:
+      type: object
+      additionalProperties: { type: [string, number, boolean] }
+    TemplateInput:
+      type: object
+      additionalProperties: false
+      required: [nombre, canal, contenido, variables]
+      properties:
+        nombre: { type: string, maxLength: 100 }
+        canal: { $ref: '#/components/schemas/Channel' }
+        contenido: { type: string, maxLength: 20000 }
+        variables: { type: array, uniqueItems: true, items: { type: string } }
+    Template:
+      allOf:
+        - { $ref: '#/components/schemas/TemplateInput' }
+        - { type: object, properties: { id: { type: string } } }
+    NotificationInput:
+      type: object
+      additionalProperties: false
+      required: [canal, destinatario, plantillaId, variables]
+      properties:
+        canal: { $ref: '#/components/schemas/Channel' }
+        destinatario: { type: string, maxLength: 255 }
+        plantillaId: { type: integer, minimum: 1 }
+        variables: { $ref: '#/components/schemas/Variables' }
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        canal: { $ref: '#/components/schemas/Channel' }
+        destinatario: { type: string }
+        plantillaId: { type: string }
+        variables: { $ref: '#/components/schemas/Variables' }
+        estado: { $ref: '#/components/schemas/Status' }
+        intentos: { type: integer }
+        generacion: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    NotificationDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Notification' }
+        - type: object
+          properties:
+            historialIntentos: { type: array, items: { type: object } }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }

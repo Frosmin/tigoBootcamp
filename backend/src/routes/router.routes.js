@@ -1,34 +1,25 @@
 import ultimateExpress from 'ultimate-express';
-import { healthController } from '../controllers/health.controller.js';
-import { createTemplateController } from '../controllers/template.controller.js';
+import { healthController, readinessController } from '../controllers/health.controller.js';
 import {
-  createNotificationController,
-  getNotificationController
+  createTemplateController, deleteTemplateController, updateTemplateController
+} from '../controllers/template.controller.js';
+import {
+  createNotificationController, getNotificationController,
+  listNotificationsController, retryNotificationController
 } from '../controllers/notification.controller.js';
-import { validateRequestMiddleware } from '../middleware/validate.middleware.js';
-const { Router } = ultimateExpress;
+import { validateRequestMiddleware as validate } from '../middleware/validate.middleware.js';
 
-const router = Router();
-
-// Health check (sin validacion)
+const router = ultimateExpress.Router();
 router.get('/health', healthController);
+router.get('/ready', readinessController);
 
-router.post(
-  '/templates',
-  validateRequestMiddleware.createTemplate(),
-  createTemplateController
-);
+router.post('/templates', validate.createTemplate(), createTemplateController);
+router.put('/templates/:id', validate.getNotification(), validate.updateTemplate(), updateTemplateController);
+router.delete('/templates/:id', validate.getNotification(), deleteTemplateController);
 
-router.get(
-  '/notifications/:id',
-  validateRequestMiddleware.getNotification(),
-  getNotificationController
-);
-
-router.post(
-  '/notifications',
-  validateRequestMiddleware.createNotification(),
-  createNotificationController
-);
+router.get('/notifications', validate.listNotifications(), listNotificationsController);
+router.get('/notifications/:id', validate.getNotification(), getNotificationController);
+router.post('/notifications/:id/retry', validate.retryNotification(), retryNotificationController);
+router.post('/notifications', validate.createNotification(), createNotificationController);
 
 export default router;

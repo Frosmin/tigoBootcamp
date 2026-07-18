@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@tigo/postgres-connector', () => ({ executeQuery: vi.fn() }));
+vi.mock('../../../src/infrastructure/postgres.client.js', () => ({ executeQuery: vi.fn() }));
 
-import { executeQuery } from '@tigo/postgres-connector';
+import { executeQuery } from '../../../src/infrastructure/postgres.client.js';
 import { findAttemptsByNotificationId } from '../../../src/repositories/attempt.repository.js';
 
 describe('attempt.repository.js', () => {

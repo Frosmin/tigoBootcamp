@@ -1,19 +1,19 @@
-# Arquitectura P07 - Notificaciones
+# Arquitectura P07 - Notificaciones con BullMQ
 
-Diagramas PlantUML alineados con los requisitos RF-7.1 a RF-7.5.
+Fuentes PlantUML y PNG para RF-7.1 a RF-7.5.
 
-## Decisiones de alcance
+## Decisiones
 
-- Los servicios internos llegan autenticados por la infraestructura previa.
-- P07 no implementa autenticación, autorización ni verificación de usuarios.
-- P07 sí valida body, params, query y reglas de negocio.
-- Email y SMS se integran mediante una librería genérica de terceros y un
-  proveedor externo; no se modelan como componentes propios de Tigo.
-- HLD y LLD se mantienen deliberadamente simples.
+- Los emisores llegan autenticados por infraestructura previa.
+- PostgreSQL es fuente de verdad y contiene notificaciones, snapshots, intentos y outbox.
+- La API no escribe en Redis: confirma notificación + outbox en una transacción.
+- Un relay publica lotes idempotentes en BullMQ; workers por canal aplican concurrencia, rate limit y backoff.
+- Gmail SMTP es un proveedor genérico externo. SMS queda como puerto futuro deshabilitado.
+- SMTP tiene una ventana residual de duplicado entre ACK y commit, documentada en el LLD.
 
-## Diagramas
+## Vistas
 
-- C4: contexto, contenedores, componentes y clases.
-- BP: envío, gestión de plantillas, consulta/historial y reintento.
-- HLD: secuencia de alto nivel.
-- LLD: notificaciones y plantillas.
+- C4: contexto, contenedores, componentes, clases y despliegue.
+- BP: envío, plantillas, consulta por cursor y reintento.
+- HLD: secuencia extremo a extremo.
+- LLD: contratos de notificaciones y plantillas.
