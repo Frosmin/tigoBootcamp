@@ -99,7 +99,7 @@ describe('notification delivery smoke', () => {
 
     const notification = await insertNotification({
       canal: 'EMAIL',
-      destinatario: 'smoke@example.com',
+      destinatario: 'simonabastomart@gmail.com',
       plantillaId: templateId,
       variables: { nombre: 'Bootcamp' },
       idempotencyKey: randomUUID()
