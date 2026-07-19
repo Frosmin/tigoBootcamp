@@ -19,6 +19,7 @@ const router = Router();
 // Health check (sin validacion)
 router.get('/health', healthController);
 
+//templates
 router.post(
   '/templates',
   validateRequestMiddleware.createTemplate(),
@@ -38,6 +39,7 @@ router.delete(
   deleteTemplateController
 );
 
+//notifications
 router.get(
   '/notifications',
   validateRequestMiddleware.listNotifications(),
