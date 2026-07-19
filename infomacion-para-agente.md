@@ -6,7 +6,7 @@ importan el pdf de requerimientos es importante tenemos que cumplir todo lo que 
 
 solo implementa lo que te digo 
 
-por ahora no toques los de sonarQube dejalo tal cual 
+por ahora no toques los de sonarQube dejalo tal cual la key esta expuesta a proposito no es un error 
 tampoco implementes jenkins 
 
 
@@ -35,3 +35,9 @@ Implementa el listado con filtros opcionales canal y estado, más paginación (p
 POST /notifications/:id/retry
 Construye este endpoint sobre el worker ya funcional: valida que exista, que esté en FALLIDA, que no exceda el máximo de intentos y vuelve a encolarla aplicando el backoff exponencial. Nunca debe reenviar una notificación ENVIADA.
 
+
+Pruebas que faltan 
+SonarCube(Completado)
+Jenkins
+Openapi(completado)
+k6
