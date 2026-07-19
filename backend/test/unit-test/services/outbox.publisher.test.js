@@ -78,4 +78,26 @@ describe('outbox.publisher.js', () => {
     await stop();
     expect(mocks.lockNextOutboxEvent).toHaveBeenCalled();
   });
+
+  it('waits for an active batch before stopping without scheduling another poll', async () => {
+    let resolveLock;
+    mocks.lockNextOutboxEvent.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveLock = resolve;
+    }));
+
+    const stop = startOutboxPublisher(queue, logger);
+    let stopped = false;
+    const stopping = stop().then(() => {
+      stopped = true;
+    });
+
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    expect(mocks.lockNextOutboxEvent).toHaveBeenCalledTimes(1);
+
+    resolveLock(undefined);
+    await stopping;
+    expect(stopped).toBe(true);
+    expect(mocks.lockNextOutboxEvent).toHaveBeenCalledTimes(1);
+  });
 });

@@ -41,23 +41,26 @@ export const publishOutboxBatch = async (queue, logger = console) => {
 export const startOutboxPublisher = (queue, logger = console) => {
   let running = false;
   let stopped = false;
-  const poll = async () => {
+  let activePoll;
+  const poll = () => {
     if (running || stopped) return;
     running = true;
-    try {
-      await publishOutboxBatch(queue, logger);
-    } catch (error) {
-      logger.error('Outbox publisher error', error);
-    } finally {
-      running = false;
-    }
+    activePoll = (async () => {
+      try {
+        await publishOutboxBatch(queue, logger);
+      } catch (error) {
+        logger.error('Outbox publisher error', error);
+      } finally {
+        running = false;
+      }
+    })();
   };
   const timer = setInterval(poll, config.OUTBOX_POLL_INTERVAL_MS);
   timer.unref();
-  void poll();
+  poll();
   return async () => {
     stopped = true;
     clearInterval(timer);
-    while (running) await new Promise((resolve) => setTimeout(resolve, 10));
+    await activePoll;
   };
 };
