@@ -57,7 +57,7 @@ services:
   worker:
     build: .
     restart: unless-stopped
-    command: ["node", "--require", "./opentelemetry.js", "./worker.js"]
+    command: ["node", "./worker.js"]
     env_file: .env
     environment:
       P_DB_HOST: db

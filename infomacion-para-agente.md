@@ -41,3 +41,4 @@ SonarCube(Completado)
 Jenkins
 Openapi(completado)
 k6
+trivy(completado)
