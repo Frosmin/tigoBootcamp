@@ -13,6 +13,7 @@
     "dev:sms-mock": "node --watch dev/sms-mock.js",
     "coverage": "vitest run --coverage test/unit-test/",
     "test:smoke": "vitest run test/smoke/",
+    "test:twilio": "vitest run test/integration/twilio.sms.integration.test.js",
     "sonar": "sonar"
   },
   "repository": {

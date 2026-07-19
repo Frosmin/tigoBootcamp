@@ -11,7 +11,7 @@ tampoco implementes jenkins
 
 
 para email se usar el smpt de google gmail 
-para sms (aun por definir el proveedor)
+para SMS se usa Twilio mediante su API REST
 aun no hagas documentacion con openapi 
 
 

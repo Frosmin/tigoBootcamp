@@ -70,7 +70,7 @@ if (¿Ya está ENVIADA?) then (Sí)
 endif
 
 |Proveedor externo|
-:Entregar por Gmail SMTP\no proveedor SMS genérico;
+:Entregar por Gmail SMTP\no Twilio REST;
 
 |Procesamiento asíncrono|
 if (¿Entrega exitosa?) then (Sí)

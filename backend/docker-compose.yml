@@ -73,7 +73,8 @@ services:
     profiles: ["development"]
     command: ["node", "./dev/sms-mock.js"]
     environment:
-      SMS_PROVIDER_TOKEN: dev-sms-token
+      TWILIO_ACCOUNT_SID: AC00000000000000000000000000000000
+      TWILIO_AUTH_TOKEN: dev-twilio-token
 
 volumes:
   postgres_data:

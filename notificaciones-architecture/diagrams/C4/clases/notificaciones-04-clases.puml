@@ -111,7 +111,7 @@ package "Procesamiento asíncrono" {
     }
 
     class EmailSender <<Nodemailer>>
-    class SmsSender <<HTTP genérico>>
+    class SmsSender <<Twilio REST>>
 }
 
 NotificationService --> NotificationRepository

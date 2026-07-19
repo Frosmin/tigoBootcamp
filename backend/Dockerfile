@@ -135,6 +135,7 @@ COPY index.js worker.js ./
 COPY schemas ./schemas
 COPY src ./src
 COPY docs/openapi.json ./docs/openapi.json
+COPY dev ./dev
 
 
 RUN npm prune --omit=dev --offline --ignore-scripts \

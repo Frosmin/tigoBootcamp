@@ -11,11 +11,11 @@ Person(emisores, "Servicios internos", "Sistemas previamente autenticados que ge
 System(notificaciones, "Microservicio Notificaciones", "API backend que persiste y entrega notificaciones por email o SMS con control de estado e intentos.")
 
 System_Ext(gmail, "Gmail SMTP", "Proveedor externo usado para entregar correo electrónico.")
-System_Ext(sms, "Proveedor SMS", "Proveedor HTTP genérico de terceros, aún por definir.")
+System_Ext(sms, "Twilio", "Proveedor externo usado para aceptar y entregar mensajes SMS.")
 
 Rel(emisores, notificaciones, "Gestiona plantillas y notificaciones", "HTTPS / REST / JSON")
 Rel(notificaciones, gmail, "Entrega EMAIL", "Nodemailer / SMTP")
-Rel(notificaciones, sms, "Entrega SMS", "HTTPS / JSON")
+Rel(notificaciones, sms, "Entrega SMS", "HTTPS / REST")
 
 SHOW_LEGEND()
 @enduml

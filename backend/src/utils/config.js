@@ -26,6 +26,9 @@ export default {
   SMTP_USER: process.env.SMTP_USER,
   SMTP_APP_PASSWORD: process.env.SMTP_APP_PASSWORD,
   SMTP_FROM: process.env.SMTP_FROM,
-  SMS_PROVIDER_URL: process.env.SMS_PROVIDER_URL,
-  SMS_PROVIDER_TOKEN: process.env.SMS_PROVIDER_TOKEN
+  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_FROM_NUMBER: process.env.TWILIO_FROM_NUMBER,
+  TWILIO_API_BASE_URL: process.env.TWILIO_API_BASE_URL || 'https://api.twilio.com',
+  TWILIO_TEST_TO: process.env.TWILIO_TEST_TO
 };

@@ -54,7 +54,7 @@ else FALLIDA o máximo agotado
 else entrega permitida
     worker -> worker : renderTemplate(contenido, variables)
     worker -> sender : enviar(notificationId, destinatario, mensaje)
-    sender -> provider : Gmail SMTP o SMS HTTPS\ncon identificador determinista
+    sender -> provider : Gmail SMTP o Twilio REST\ncon identificador de proveedor
     provider --> sender : aceptación o error
     alt éxito
         worker -> db : CTE: incrementar intentos +\nINSERT EXITOSO + estado ENVIADA

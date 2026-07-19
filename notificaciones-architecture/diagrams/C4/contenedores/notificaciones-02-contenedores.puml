@@ -8,7 +8,7 @@ title Diagrama de Contenedores (C2) - Notificaciones
 
 Person(emisores, "Servicios internos", "Consumidores previamente autenticados.")
 System_Ext(gmail, "Gmail SMTP", "Entrega mensajes de correo.")
-System_Ext(sms, "Proveedor SMS genérico", "Entrega mensajes SMS mediante HTTP.")
+System_Ext(sms, "Twilio", "Acepta y entrega mensajes SMS mediante su API REST.")
 
 System_Boundary(p07, "Microservicio P07 Notificaciones") {
     Container(api, "API REST", "Node.js / ultimate-express / Zod", "Valida solicitudes, gestiona plantillas y guarda notificación más evento outbox en una transacción PostgreSQL.")
@@ -23,7 +23,7 @@ Rel(api, db, "Lee y persiste en transacciones", "SQL")
 Rel(worker, db, "Reclama outbox; consulta y actualiza estados e intentos", "SQL")
 Rel(worker, redis, "Publica y consume jobs BullMQ", "RESP")
 Rel(worker, gmail, "Envía EMAIL", "SMTP")
-Rel(worker, sms, "Envía SMS", "HTTPS / JSON")
+Rel(worker, sms, "Envía SMS", "HTTPS / REST")
 
 SHOW_LEGEND()
 @enduml

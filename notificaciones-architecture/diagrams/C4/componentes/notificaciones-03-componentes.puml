@@ -9,7 +9,7 @@ title Diagrama de Componentes (C3) - Notificaciones
 
 Person(emisores, "Servicios internos", "Consumidores previamente autenticados.")
 System_Ext(gmail, "Gmail SMTP", "Proveedor externo de email.")
-System_Ext(sms, "Proveedor SMS", "Proveedor HTTP genérico.")
+System_Ext(sms, "Twilio", "Proveedor externo de SMS.")
 ContainerDb(db, "PostgreSQL", "Fuente de verdad", "Plantillas, notificaciones, intentos y notification_outbox.")
 ContainerQueue(redis, "BullMQ sobre Redis", "Infraestructura operativa", "Jobs, backoff y rate limiting; sin estado de negocio.")
 
@@ -23,7 +23,7 @@ Container_Boundary(runtime, "Worker y Outbox Publisher") {
     Component(publisher, "Outbox Publisher", "Polling PostgreSQL", "Reclama eventos pendientes y los publica como jobs BullMQ con jobId estable.")
     Component(queueModule, "Cola de notificaciones", "BullMQ Queue", "Configura intentos, backoff exponencial y retención de jobs.")
     Component(processor, "Procesador de entrega", "BullMQ Worker", "Bloquea por notificación, consulta su estado, entrega y registra cada intento.")
-    Component(senders, "Adaptadores de canal", "Nodemailer / HTTP", "Envía EMAIL por Gmail SMTP y SMS mediante proveedor genérico.")
+    Component(senders, "Adaptadores de canal", "Nodemailer / fetch", "Envía EMAIL por Gmail SMTP y SMS mediante la API REST de Twilio.")
 }
 
 Rel(emisores, http, "HTTPS / REST / JSON")
@@ -38,7 +38,7 @@ Rel(redis, processor, "Entrega jobs disponibles", "RESP")
 Rel(processor, db, "Advisory lock; lee estado y registra intentos", "SQL")
 Rel(processor, senders, "Entrega contenido renderizado")
 Rel(senders, gmail, "EMAIL", "SMTP")
-Rel(senders, sms, "SMS", "HTTPS / JSON")
+Rel(senders, sms, "SMS", "HTTPS / REST")
 
 SHOW_LEGEND()
 @enduml

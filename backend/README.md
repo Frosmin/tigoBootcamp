@@ -31,7 +31,7 @@ control de estado, idempotencia y reintentos con backoff exponencial.
 - `@tigo/postgres-connector` para acceso a datos.
 - `zod` para validacion estricta de body, params, query y headers.
 - BullMQ + Redis para procesamiento asincrono.
-- Nodemailer para EMAIL y un adaptador HTTP generico para SMS.
+- Nodemailer para EMAIL y la API REST de Twilio para SMS.
 - Patron transactional outbox para aceptar solicitudes aunque Redis este caido.
 - `helmet` y Content Security Policy para hardening HTTP.
 - `express-prom-bundle` para metricas Prometheus.
@@ -66,7 +66,7 @@ route -> middleware (Zod) -> controller -> service -> repository -> PostgreSQL
 - Los controllers traducen el resultado a HTTP.
 - Los services contienen las reglas de negocio.
 - Los repositories encapsulan SQL parametrizado.
-- Los providers aislan los contratos de Gmail SMTP y SMS HTTP.
+- Los providers aislan los contratos de Gmail SMTP y Twilio REST.
 
 ## Flujo de entrega
 
@@ -312,7 +312,7 @@ estado a `ENCOLADA`.
 - Las variables recibidas deben coincidir exactamente con las requeridas.
 - Una notificacion `ENVIADA` nunca vuelve a invocar al proveedor.
 - Los reintentos automaticos y manuales respetan el maximo configurado.
-- Los fallos HTTP `408`, `429` y `5xx` del proveedor SMS son transitorios; los
+- Los fallos HTTP `408`, `429` y `5xx` de Twilio son transitorios; los
   demas `4xx` son permanentes.
 
 ## Variables de entorno
@@ -357,8 +357,11 @@ Copiar `.env.example` a `.env` y ajustar credenciales y proveedores.
 | `SMTP_USER` | EMAIL | Cuenta Gmail |
 | `SMTP_APP_PASSWORD` | EMAIL | App Password; nunca usar la password normal |
 | `SMTP_FROM` | EMAIL | Remitente visible |
-| `SMS_PROVIDER_URL` | SMS | Endpoint HTTP del proveedor |
-| `SMS_PROVIDER_TOKEN` | SMS | Bearer token del proveedor |
+| `TWILIO_ACCOUNT_SID` | SMS | Identificador de la cuenta Twilio |
+| `TWILIO_AUTH_TOKEN` | SMS | Secreto de autenticacion; conservar solo en `.env` |
+| `TWILIO_FROM_NUMBER` | SMS | Numero Twilio remitente en formato E.164 |
+| `TWILIO_API_BASE_URL` | No | Predeterminado `https://api.twilio.com`; permite usar el mock local |
+| `TWILIO_TEST_TO` | Prueba real | Destinatario E.164 para `npm run test:twilio` |
 
 La falta de configuracion de un canal es terminal solo para los jobs de ese
 canal; no impide que el worker procese el otro.
@@ -408,11 +411,13 @@ Terminal 3, proveedor SMS simulado opcional:
 npm run dev:sms-mock
 ```
 
-Con el mock local, configurar:
+Con el simulador Twilio local, configurar:
 
 ```dotenv
-SMS_PROVIDER_URL=http://localhost:4010/messages
-SMS_PROVIDER_TOKEN=dev-sms-token
+TWILIO_ACCOUNT_SID=AC00000000000000000000000000000000
+TWILIO_AUTH_TOKEN=dev-twilio-token
+TWILIO_FROM_NUMBER=+15005550006
+TWILIO_API_BASE_URL=http://localhost:4010
 ```
 
 ## Docker Compose
@@ -438,7 +443,10 @@ docker compose --profile development up --build
 En ese caso, el worker debe usar:
 
 ```dotenv
-SMS_PROVIDER_URL=http://sms-mock:4010/messages
+TWILIO_ACCOUNT_SID=AC00000000000000000000000000000000
+TWILIO_AUTH_TOKEN=dev-twilio-token
+TWILIO_FROM_NUMBER=+15005550006
+TWILIO_API_BASE_URL=http://sms-mock:4010
 ```
 
 Redis se inicia con AOF y `maxmemory-policy noeviction`. PostgreSQL ejecuta
@@ -456,6 +464,7 @@ Redis se inicia con AOF y `maxmemory-policy noeviction`. PostgreSQL ejecuta
 | `npm test` | Ejecuta pruebas unitarias y de contrato |
 | `npm run coverage` | Ejecuta cobertura V8 con umbral de 85% |
 | `npm run test:smoke` | Ejecuta el flujo smoke de entrega |
+| `npm run test:twilio` | Envia un SMS real usando las credenciales de `.env` |
 | `npm run sonar` | Ejecuta el analisis Sonar |
 
 ## Testing
@@ -475,6 +484,13 @@ El smoke test necesita PostgreSQL, Redis y el proveedor SMS simulado:
 
 ```bash
 npm run test:smoke
+```
+
+La prueba Twilio es opt-in, tiene costo y envia exactamente un SMS al numero
+definido en `TWILIO_TEST_TO`:
+
+```bash
+npm run test:twilio
 ```
 
 ## Observabilidad y seguridad

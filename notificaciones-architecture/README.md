@@ -7,8 +7,8 @@ backend implementado mediante BullMQ, Redis, PostgreSQL y transactional outbox.
 
 - Los servicios internos llegan autenticados por la infraestructura previa.
 - P07 no implementa autenticación, autorización ni verificación de usuarios.
-- Email usa Gmail SMTP mediante Nodemailer; SMS usa un adaptador HTTP genérico
-  cuyo proveedor definitivo aún no está definido.
+- Email usa Gmail SMTP mediante Nodemailer; SMS usa la API REST de Twilio
+  mediante un adaptador HTTP propio.
 - PostgreSQL es la fuente de verdad para plantillas, notificaciones,
   idempotencia, estados, intentos y eventos outbox.
 - La API confirma `notificacion` y `notification_outbox` en una misma
