@@ -33,10 +33,12 @@
     "ioredis": "^5.11.1",
     "luxon": "^3.7.2",
     "nodemailer": "^9.0.3",
+    "swagger-ui-express": "^5.0.1",
     "ultimate-express": "2.0.9",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
     "@sonar/scan": "^4.4.0",
     "@vitest/coverage-v8": "^4.0.7",
     "node-mocks-http": "^1.17.2",

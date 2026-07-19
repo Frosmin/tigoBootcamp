@@ -1,9 +1,11 @@
 import ultimateExpress from 'ultimate-express';
 import promBundle from 'express-prom-bundle';
 import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
 import routerRoutes from './routes/router.routes.js';
 import bodyParser from 'body-parser';
 import { httpLoggerMiddleware } from '@tigo/logger';
+import openapiDocument from './openapi/openapi.document.js';
 import config from './utils/config.js';
 const app = ultimateExpress({ threads: 0 });
 
@@ -37,6 +39,37 @@ app.use((req, res, next) => {
   res.setHeader('Pragma', 'no-cache');
   next();
 });
+
+app.get('/openapi.json', (req, res) => res.status(200).json(openapiDocument));
+
+const docsContentSecurityPolicy = helmet.contentSecurityPolicy({
+  useDefaults: false,
+  directives: {
+    defaultSrc: ['\'none\''],
+    scriptSrc: ['\'self\'', '\'unsafe-inline\''],
+    styleSrc: ['\'self\'', '\'unsafe-inline\''],
+    imgSrc: ['\'self\'', 'data:'],
+    fontSrc: ['\'self\'', 'data:'],
+    connectSrc: ['\'self\''],
+    objectSrc: ['\'none\''],
+    baseUri: ['\'self\''],
+    frameAncestors: ['\'none\'']
+  }
+});
+
+app.use(
+  '/docs',
+  docsContentSecurityPolicy,
+  ...swaggerUi.serve,
+  swaggerUi.setup(openapiDocument, {
+    customSiteTitle: 'P07 - API de notificaciones',
+    swaggerOptions: {
+      displayRequestDuration: true,
+      persistAuthorization: false,
+      tryItOutEnabled: true
+    }
+  })
+);
 
 app.use(config.API_BASE_PATH, routerRoutes);
 
