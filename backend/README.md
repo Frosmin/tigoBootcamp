@@ -463,6 +463,7 @@ Redis se inicia con AOF y `maxmemory-policy noeviction`. PostgreSQL ejecuta
 | `npm run dev:sms-mock` | Inicia el proveedor SMS local |
 | `npm test` | Ejecuta pruebas unitarias y de contrato |
 | `npm run coverage` | Ejecuta cobertura V8 con umbral de 85% |
+| `npm run test:performance` | Ejecuta K6 y guarda el resumen en `docs/evidencias/k6/summary.json` |
 | `npm run test:smoke` | Ejecuta el flujo smoke de entrega |
 | `npm run test:twilio` | Envia un SMS real usando las credenciales de `.env` |
 | `npm run sonar` | Ejecuta el analisis Sonar |
@@ -479,6 +480,22 @@ npm run coverage
 
 El umbral configurado es `85%` para lineas, funciones, ramas y statements. La
 suite tambien valida el contrato OpenAPI 3.1 y su cobertura de rutas.
+
+La prueba K6 valida `p95 < 500 ms`, tasa de errores menor al `1%` y throughput
+configurable. Requiere una plantilla EMAIL con las variables `nombre` y
+`pedido`; su identificador se pasa mediante `TEMPLATE_ID`:
+
+```powershell
+$env:BASE_URL = "http://localhost:3050"
+$env:TEMPLATE_ID = "1"
+$env:RATE = "10"
+$env:DURATION = "1m"
+npm run test:performance
+```
+
+La guia completa esta en `test/performance/README.md`. El resumen JSON se
+escribe en `docs/evidencias/k6/summary.json` y puede publicarse como artefacto
+del pipeline.
 
 El smoke test necesita PostgreSQL, Redis y el proveedor SMS simulado:
 

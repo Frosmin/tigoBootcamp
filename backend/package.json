@@ -12,6 +12,7 @@
     "dev:worker": "node --watch worker.js",
     "dev:sms-mock": "node --watch dev/sms-mock.js",
     "coverage": "vitest run --coverage test/unit-test/",
+    "test:performance": "k6 run --summary-mode=full --summary-export docs/evidencias/k6/summary.json test/performance/notifications.k6.js",
     "test:smoke": "vitest run test/smoke/",
     "test:twilio": "vitest run test/integration/twilio.sms.integration.test.js",
     "sonar": "sonar"
