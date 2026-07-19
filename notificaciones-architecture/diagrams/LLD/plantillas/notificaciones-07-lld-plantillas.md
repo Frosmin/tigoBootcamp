@@ -24,7 +24,11 @@ La base de datos garantiza la unicidad de `(nombre, canal)`.
 |---|---|---|
 | `POST` | `/api/v1/templates` | `201`, `400` o `409`. |
 | `PUT` | `/api/v1/templates/{id}` | `200`, `400`, `404` o `409`. |
-| `DELETE` | `/api/v1/templates/{id}` | `204`, `400` o `404`. |
+| `DELETE` | `/api/v1/templates/{id}` | `204`, `400`, `404` o `409`. |
+
+El borrado devuelve `409` cuando la plantilla existe pero tiene notificaciones
+asociadas; PostgreSQL conserva la relación mediante `ON DELETE RESTRICT` y el
+repositorio evita ejecutar el `DELETE` en ese caso.
 
 No se definen respuestas `401` o `403`, porque autenticación y autorización están
 fuera del alcance del microservicio.

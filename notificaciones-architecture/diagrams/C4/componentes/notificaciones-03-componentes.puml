@@ -3,62 +3,42 @@
 !define RELATIVE_INCLUDE "."
 !include ../../../../notificaciones-architecture/binariess/C4_Component.puml
 
-LAYOUT_LEFT_RIGHT()
+LAYOUT_TOP_DOWN()
 
 title Diagrama de Componentes (C3) - Notificaciones
 
-Person(emisores, "Emisores", "Clientes internos")
-System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico entrega los mensajes solicitados.")
-ContainerDb(db, "PostgreSQL", "postgres", "Plantillas, notificaciones, idempotencia e intentos.")
-ContainerDb(redis, "Redis", "redis", "Streams, trabajos diferidos y throughput.")
+Person(emisores, "Servicios internos", "Consumidores previamente autenticados.")
+System_Ext(gmail, "Gmail SMTP", "Proveedor externo de email.")
+System_Ext(sms, "Proveedor SMS", "Proveedor HTTP genérico.")
+ContainerDb(db, "PostgreSQL", "Fuente de verdad", "Plantillas, notificaciones, intentos y notification_outbox.")
+ContainerQueue(redis, "BullMQ sobre Redis", "Infraestructura operativa", "Jobs, backoff y rate limiting; sin estado de negocio.")
 
-Container_Boundary(api, "API REST - Node.js / ultimate-express") {
-    Component(routes, "Rutas y controladores", "ultimate-express", "Expone los endpoints /api/v1 de notificaciones y plantillas y genera respuestas estandarizadas.")
-    Component(validation, "Validación de solicitudes", "Middleware / Zod", "Valida body, params y query antes de ejecutar cada caso de uso; no autentica usuarios.")
-    Component(notificationService, "Servicio de notificaciones", "Módulo de aplicación", "Crea, consulta, filtra y solicita reintentos de notificaciones sin duplicados.")
-    Component(templateService, "Servicio de plantillas", "Módulo de aplicación", "Crea, modifica y elimina plantillas; verifica nombre único por canal y variables requeridas.")
-    Component(templateRenderer, "Validador y renderizador", "Módulo de dominio", "Comprueba que todas las variables estén presentes y genera el contenido final.")
-    Component(notificationRepo, "Repositorio de notificaciones e intentos", "postgres-connector", "Persiste notificaciones, estados, claves idempotentes e historial de intentos.")
-    Component(templateRepo, "Repositorio de plantillas", "postgres-connector", "Persiste y consulta plantillas por identificador, nombre y canal.")
-    Component(queueAdapter, "Adaptador de cola", "ioredis / Redis Streams", "Publica identificadores de notificación mediante XADD.")
+Container_Boundary(api, "API REST") {
+    Component(http, "Capa HTTP", "Routes / Zod / Controllers", "Valida requests y traduce resultados a respuestas estandarizadas.")
+    Component(apiServices, "Servicios de aplicación", "NotificationService / TemplateService", "Aplica idempotencia, reglas de plantillas, consultas y reintento manual.")
+    Component(apiPersistence, "Persistencia transaccional", "Repositories / withTransaction", "Guarda notificación y outbox atómicamente; consulta y modifica el estado de negocio.")
 }
 
-Container_Boundary(worker, "Worker de envíos - Node.js") {
-    Component(dispatchWorker, "Procesador de envíos", "Worker", "Consume trabajos, coordina el envío y registra el resultado de cada intento.")
-    Component(retryPolicy, "Política de reintentos", "Dominio", "Calcula el backoff exponencial y bloquea reintentos al alcanzar el máximo.")
-    Component(rateLimiter, "Limitador de throughput", "Redis", "Aplica el máximo configurable de envíos por minuto.")
-    Component(deliveryGuard, "Control de idempotencia", "Redis", "Evita entregas duplicadas y no permite reenviar una notificación ya enviada.")
-    Component(channelConnector, "Conector de email/SMS", "Librería genérica de terceros", "Adapta los canales EMAIL y SMS al proveedor externo.")
+Container_Boundary(runtime, "Worker y Outbox Publisher") {
+    Component(publisher, "Outbox Publisher", "Polling PostgreSQL", "Reclama eventos pendientes y los publica como jobs BullMQ con jobId estable.")
+    Component(queueModule, "Cola de notificaciones", "BullMQ Queue", "Configura intentos, backoff exponencial y retención de jobs.")
+    Component(processor, "Procesador de entrega", "BullMQ Worker", "Bloquea por notificación, consulta su estado, entrega y registra cada intento.")
+    Component(senders, "Adaptadores de canal", "Nodemailer / HTTP", "Envía EMAIL por Gmail SMTP y SMS mediante proveedor genérico.")
 }
 
-Rel(emisores, validation, "HTTPS / REST / JSON")
-Rel(validation, routes, "Entrega solicitudes válidas")
-Rel(routes, notificationService, "Crear, consultar, listar y reintentar")
-Rel(routes, templateService, "Crear, modificar y eliminar")
+Rel(emisores, http, "HTTPS / REST / JSON")
+Rel(http, apiServices, "Ejecuta casos de uso")
+Rel(apiServices, apiPersistence, "Lee o persiste")
+Rel(apiPersistence, db, "SQL")
 
-Rel(notificationService, templateRenderer, "Valida plantilla y variables")
-Rel(notificationService, notificationRepo, "Lee y persiste")
-Rel(notificationService, queueAdapter, "Encola envío o reintento")
-Rel(templateService, templateRepo, "Lee y persiste")
-
-Rel(notificationRepo, db, "SQL")
-Rel(templateRepo, db, "SQL")
-Rel(queueAdapter, redis, "RESP")
-
-Rel(dispatchWorker, redis, "Consume trabajos", "RESP")
-Rel(dispatchWorker, notificationRepo, "Actualiza estado e intentos")
-Rel(dispatchWorker, templateRepo, "Obtiene la plantilla")
-Rel(dispatchWorker, templateRenderer, "Renderiza contenido")
-Rel(dispatchWorker, retryPolicy, "Evalúa y programa reintentos")
-Rel(dispatchWorker, rateLimiter, "Solicita permiso de envío")
-Rel(dispatchWorker, deliveryGuard, "Verifica entrega e idempotencia")
-Rel(retryPolicy, queueAdapter, "Programa trabajo diferido")
-Rel(rateLimiter, redis, "Actualiza contador", "RESP")
-Rel(deliveryGuard, redis, "Reserva o consulta clave", "RESP")
-Rel(dispatchWorker, channelConnector, "Envía mensaje")
-Rel(channelConnector, proveedor, "Entrega email o SMS", "HTTPS")
-
-
+Rel(publisher, db, "FOR UPDATE SKIP LOCKED; marca publicado o reprograma", "SQL")
+Rel(publisher, queueModule, "Crea job outbox-{id}")
+Rel(queueModule, redis, "Almacena jobs BullMQ", "RESP")
+Rel(redis, processor, "Entrega jobs disponibles", "RESP")
+Rel(processor, db, "Advisory lock; lee estado y registra intentos", "SQL")
+Rel(processor, senders, "Entrega contenido renderizado")
+Rel(senders, gmail, "EMAIL", "SMTP")
+Rel(senders, sms, "SMS", "HTTPS / JSON")
 
 SHOW_LEGEND()
 @enduml

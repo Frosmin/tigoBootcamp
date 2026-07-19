@@ -3,213 +3,135 @@
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam classAttributeIconSize 0
+skinparam linetype ortho
 skinparam class {
     BackgroundColor #FFFFFF
     BorderColor #1168BD
     ArrowColor #1168BD
     FontColor #1A1A1A
-    AttributeFontColor #1A1A1A
-    StereotypeFontColor #003865
 }
 skinparam package {
     BackgroundColor #F4F8FD
     BorderColor #9BB7D4
     FontColor #003865
 }
-skinparam enum {
-    BackgroundColor #FFF7E6
-    BorderColor #E0A800
-    FontColor #1A1A1A
-}
 
-title Diagrama de Clases (C4) - Notificaciones
+title Vista de código y modelo - Notificaciones
 
-package "Dominio" {
-    enum Canal {
-        EMAIL
-        SMS
-    }
-
-    enum EstadoNotificacion {
-        ENCOLADA
-        ENVIADA
-        FALLIDA
-    }
-
-    enum ResultadoIntento {
-        EXITOSO
-        FALLIDO
-    }
-
+package "Modelo persistido en PostgreSQL" {
     class Plantilla {
-        +id: string
+        +id: bigint
         +nombre: string
-        +canal: Canal
+        +canal: EMAIL | SMS
         +contenido: string
         +variables: string[]
-        +validarVariables(valores: object): void
-        +renderizar(valores: object): string
     }
 
     class Notificacion {
-        +id: string
-        +canal: Canal
+        +id: bigint
+        +canal: EMAIL | SMS
         +destinatario: string
-        +plantillaId: string
-        +variables: object
-        +estado: EstadoNotificacion
+        +plantillaId: bigint
+        +variables: json
+        +estado: ENCOLADA | ENVIADA | FALLIDA
         +intentos: number
         +idempotencyKey: string
-        +creadaEn: Date
-        +marcarEnviada(): void
-        +marcarFallida(): void
-        +puedeReintentarse(maxIntentos: number): boolean
     }
 
     class Intento {
-        +id: string
-        +notificacionId: string
+        +id: bigint
+        +notificacionId: bigint
         +numero: number
-        +resultado: ResultadoIntento
+        +resultado: EXITOSO | FALLIDO
         +detalle: string
         +timestamp: Date
     }
 
-    class PoliticaReintentos {
-        +maxIntentos: number
-        +demoraBaseMs: number
-        +puedeReintentar(notificacion: Notificacion): boolean
-        +calcularDemora(numeroIntento: number): number
+    class OutboxEvent {
+        +id: bigint
+        +notificationId: bigint
+        +publishedAt: Date?
+        +publishAttempts: number
+        +availableAt: Date
+        +lastError: string?
     }
 }
 
-Plantilla --> Canal
-Notificacion --> Canal
-Notificacion --> EstadoNotificacion
-Notificacion "1" --> "1" Plantilla
+Plantilla "1" <-- "0..*" Notificacion
 Notificacion "1" *-- "0..*" Intento
-Intento --> ResultadoIntento
-PoliticaReintentos ..> Notificacion
+Notificacion "1" *-- "1..*" OutboxEvent
 
-package "API" {
-    class NotificacionController {
-        +POST /api/v1/notifications(req, res): void
-        +GET /api/v1/notifications/:id(req, res): void
-        +POST /api/v1/notifications/:id/retry(req, res): void
-        +GET /api/v1/notifications(req, res): void
+package "API y aplicación" {
+    class NotificationService <<module>> {
+        +createNotification(request, idempotencyKey)
+        +getNotification(id)
+        +listNotifications(filters)
+        +retryNotification(id)
     }
 
-    class PlantillaController {
-        +POST /api/v1/templates(req, res): void
-        +PUT /api/v1/templates/:id(req, res): void
-        +DELETE /api/v1/templates/:id(req, res): void
+    class NotificationRepository <<module>> {
+        +insertNotification(data)
+        +findNotificationById(id)
+        +findNotificationsPage(filters)
+        +scheduleNotificationRetry(client, id, delayMs)
     }
 
-    class ValidationMiddleware {
-        +validate(schema): Middleware
-    }
-}
-
-package "Aplicación" {
-    class NotificacionService {
-        +crear(command, idempotencyKey): Notificacion
-        +obtener(id): Notificacion
-        +listar(canal, estado, page, limit): Page
-        +reintentar(id): Notificacion
-    }
-
-    class PlantillaService {
-        +crear(command): Plantilla
-        +actualizar(id, command): Plantilla
-        +eliminar(id): void
-    }
-
-    class ProcesadorEnvios {
-        +procesarSiguiente(): void
-        +procesar(notificacionId: string): void
-        -registrarResultado(resultado): Intento
+    class TemplateRepository <<module>> {
+        +findTemplateById(id)
+        +insertTemplate(data)
+        +updateTemplateById(id, data)
+        +deleteTemplateById(id)
     }
 }
 
-ValidationMiddleware --> NotificacionController
-ValidationMiddleware --> PlantillaController
-NotificacionController --> NotificacionService
-PlantillaController --> PlantillaService
-
-package "Persistencia" {
-    interface NotificacionRepository {
-        +findById(id): Notificacion
-        +findPage(filtros, page, limit): Page
-        +findByIdempotencyKey(key): Notificacion
-        +save(notificacion): Notificacion
-        +deleteAfterQueueFailure(id, key): void
-        +updateEstado(id, estado): void
+package "Procesamiento asíncrono" {
+    class OutboxPublisher <<module>> {
+        +publishNextOutboxEvent(queue)
+        +publishOutboxBatch(queue)
+        +startOutboxPublisher(queue)
     }
 
-    interface PlantillaRepository {
-        +findById(id): Plantilla
-        +existsByNombreAndCanal(nombre, canal, excludeId): boolean
-        +save(plantilla): Plantilla
-        +deleteById(id): void
+    class OutboxRepository <<module>> {
+        +lockNextOutboxEvent(client)
+        +markOutboxPublished(client, id)
+        +markOutboxPublicationFailed(client, id, error, delay)
     }
 
-    interface IntentoRepository {
-        +save(intento): Intento
-        +findByNotificacionId(id): Intento[]
+    class NotificationQueue <<BullMQ Queue>> {
+        +enqueueOutboxEvent(queue, event)
+        jobId = "outbox-{event.id}"
+        backoff = exponential
     }
+
+    class NotificationProcessor <<BullMQ Worker>> {
+        +process(job)
+        +advisoryLock(notificationId)
+        +skipIfAlreadySent()
+        +recordAttemptAndState()
+    }
+
+    class EmailSender <<Nodemailer>>
+    class SmsSender <<HTTP genérico>>
 }
 
-package "Adaptadores e infraestructura" {
-    interface ColaNotificaciones {
-        +encolar(notificacionId: string): void
-        +encolarDiferido(notificacionId: string, delayMs: number): void
-        +siguiente(): string
-    }
+NotificationService --> NotificationRepository
+NotificationService --> TemplateRepository
+NotificationRepository --> Notificacion
+NotificationRepository --> OutboxEvent : misma transacción
+TemplateRepository --> Plantilla
 
-    interface DeliveryConnector {
-        +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
-    }
+OutboxPublisher --> OutboxRepository
+OutboxPublisher --> NotificationQueue
+OutboxRepository --> OutboxEvent
+NotificationQueue --> NotificationProcessor : job BullMQ
+NotificationProcessor --> Notificacion : verifica PostgreSQL
+NotificationProcessor --> Intento : registra resultado
+NotificationProcessor --> EmailSender
+NotificationProcessor --> SmsSender
 
-    class ThirdPartyEmailSmsConnector {
-        +enviar(canal: Canal, destinatario: string, contenido: string): DeliveryResult
-    }
-
-    class RedisQueueAdapter {
-        +encolar(notificacionId: string): void
-        +encolarDiferido(notificacionId: string, delayMs: number): void
-        +siguiente(): string
-    }
-
-    class ThroughputLimiter {
-        +maxPorMinuto: number
-        +adquirirPermiso(): boolean
-    }
-
-    class DeliveryGuard {
-        +fueEntregada(notificacionId: string): boolean
-    }
-}
-
-ThirdPartyEmailSmsConnector ..|> DeliveryConnector
-RedisQueueAdapter ..|> ColaNotificaciones
-
-NotificacionService ..> NotificacionRepository
-NotificacionService ..> PlantillaRepository
-NotificacionService ..> ColaNotificaciones
-NotificacionService ..> Notificacion
-
-PlantillaService ..> PlantillaRepository
-PlantillaService ..> Plantilla
-
-ProcesadorEnvios ..> NotificacionRepository
-ProcesadorEnvios ..> PlantillaRepository
-ProcesadorEnvios ..> IntentoRepository
-ProcesadorEnvios ..> ColaNotificaciones
-ProcesadorEnvios ..> DeliveryConnector
-ProcesadorEnvios ..> ThroughputLimiter
-ProcesadorEnvios ..> DeliveryGuard
-ProcesadorEnvios ..> PoliticaReintentos
-
-
+note bottom of OutboxEvent
+  PostgreSQL es la fuente de verdad.
+  Redis conserva únicamente datos operativos de BullMQ.
+end note
 
 @enduml

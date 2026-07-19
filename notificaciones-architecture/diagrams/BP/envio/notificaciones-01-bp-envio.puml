@@ -1,18 +1,16 @@
 @startuml notificaciones-01-bp-envio
 
-title Envío de Notificación
+title BP RF-7.1 - Envío de notificación
 
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam activity {
     BackgroundColor white
     BorderColor #1676D2
-    FontColor #000000
     DiamondBackgroundColor #FFF2CC
     DiamondBorderColor #C99A00
     StartColor #222222
     EndColor #222222
-    BarColor #1676D2
 }
 skinparam swimlane {
     BorderColor #8AB4E8
@@ -20,117 +18,83 @@ skinparam swimlane {
     TitleFontColor #003B70
 }
 
-|Servicio interno emisor|
+|Servicio interno|
 start
-:Solicitar envío\nPOST /api/v1/notifications;
-
-note right
-  canal: EMAIL o SMS
-  destinatario
-  plantillaId
-  variables
-  Header Idempotency-Key
-end note
+:POST /api/v1/notifications\ncon Idempotency-Key;
 
 |API REST|
-:Validar formato y datos con Zod;
-
-if (¿Solicitud válida?) then (Sí)
-    :Buscar plantilla en PostgreSQL;
-    if (¿Plantilla existente?) then (Sí)
-        :Validar variables requeridas;
-        if (¿Variables exactas?) then (Sí)
-            :Insertar ENCOLADA con clave de\nidempotencia única en PostgreSQL;
-            if (¿Solicitud duplicada?) then (Sí)
-                :Consultar notificación existente\nen PostgreSQL;
-                if (¿Mismo payload?) then (Sí)
-                    |Servicio interno emisor|
-                    :Recibir HTTP 200 con recurso existente\nsin generar otro envío;
-                    stop
-                else (No)
-                    |Servicio interno emisor|
-                    :Recibir HTTP 409 Conflict;
-                    stop
-                endif
-            else (No)
-                |API REST|
-                :XADD notificationId\na notifications:dispatch;
-                if (¿Publicación exitosa?) then (Sí)
-                    |Servicio interno emisor|
-                    :Recibir HTTP 202 Accepted\ncon recurso ENCOLADA;
-                else (No)
-                    |API REST|
-                    :Eliminar notificación nueva\ncomo compensación;
-                    |Servicio interno emisor|
-                    :Recibir HTTP 503;
-                    stop
-                endif
-            endif
-        else (No)
-            :Rechazar por variables faltantes Error;
-            |Servicio interno emisor|
-            stop
-        endif
-    else (No)
-        :Rechazar por plantilla inexistente Error;
-        |Servicio interno emisor|
-        
-        stop
-    endif
-else (No)
-    :Rechazar solicitud inválida;
-    |Servicio interno emisor|
-    
+:Validar body, destinatario,\nplantilla, canal y variables;
+if (¿Solicitud válida?) then (No)
+    :Responder 400 o 404;
     stop
 endif
 
-|Worker de envíos|
-:Consumir trabajo de Redis;
-:Consultar notificación y plantilla\nen PostgreSQL;
-
-if (¿Notificación ya ENVIADA?) then (Sí)
-    :Descartar trabajo duplicado;
+|PostgreSQL - fuente de verdad|
+:BEGIN;
+:INSERT notificación ENCOLADA\ncon idempotency_key UNIQUE;
+if (¿Clave ya utilizada?) then (Sí)
+    :COMMIT sin cambios;
+    :Consultar y comparar payload;
+    |API REST|
+    if (¿Payload idéntico?) then (Sí)
+        :Responder 200 con recurso existente;
+    else (No)
+        :Responder 409 Conflict;
+    endif
     stop
 else (No)
-    :Solicitar permiso al limitador\nde throughput en Redis;
-    if (¿Hay capacidad de envío?) then (Sí)
-        :Renderizar plantilla;
-        :Invocar librería genérica\nde email/SMS;
-|Proveedor externo email/SMS|
-        :Procesar entrega;
-        :Devolver éxito o fallo;
-        |Worker de envíos|
-        if (¿Envío exitoso?) then (Sí)
-            :Persistir intento EXITOSO;
-            :Actualizar notificación\nestado = ENVIADA;
-            stop
-        else (No)
-            :Persistir intento FALLIDO\ny causa del error;
-            if (¿Error reintentable y\nquedan intentos?) then (Sí)
-                :Calcular backoff exponencial;
-                :Programar trabajo diferido\nen Redis;
-                note right
-                  El worker no espera ni se bloquea.
-                  Otro ciclo consumirá el trabajo
-                  cuando venza el backoff.
-                end note
-                stop
-            else (No)
-                :Actualizar notificación\nestado = FALLIDA;
-                stop
-            endif
-        endif
+    :INSERT notification_outbox;
+    :COMMIT notificación + outbox;
+endif
+
+|API REST|
+:Responder 202 Accepted\ncon estado ENCOLADA;
+note right
+  La aceptación depende de PostgreSQL,
+  no de la disponibilidad de Redis.
+end note
+
+|Procesamiento asíncrono|
+:Outbox Publisher reclama evento\ncon FOR UPDATE SKIP LOCKED;
+:Crear job BullMQ\njobId = outbox-{id};
+if (¿Job publicado?) then (No)
+    :Mantener evento pendiente y\nreprogramar available_at con backoff;
+    stop
+endif
+:Marcar outbox como publicado;
+:BullMQ entrega job respetando\nthroughput configurable;
+:Worker obtiene advisory lock y\nconsulta estado en PostgreSQL;
+if (¿Ya está ENVIADA?) then (Sí)
+    :Omitir job duplicado;
+    stop
+endif
+
+|Proveedor externo|
+:Entregar por Gmail SMTP\no proveedor SMS genérico;
+
+|Procesamiento asíncrono|
+if (¿Entrega exitosa?) then (Sí)
+    |PostgreSQL - fuente de verdad|
+    :Registrar intento EXITOSO y\nestado ENVIADA;
+else (No)
+    |PostgreSQL - fuente de verdad|
+    :Registrar intento FALLIDO;
+    if (¿Error transitorio y\nquedan intentos?) then (Sí)
+        :Mantener estado ENCOLADA;
+        |Procesamiento asíncrono|
+        :BullMQ programa reintento\ncon backoff exponencial;
     else (No)
-        :Reprogramar trabajo en Redis\nsin consumir un intento;
-        stop
+        |PostgreSQL - fuente de verdad|
+        :Actualizar estado FALLIDA;
     endif
 endif
+stop
 
 legend right
-|= RF |= Cobertura |
-| RF-7.1 | Crear y procesar una notificación |
-| Estado inicial | ENCOLADA |
-| Resultado | ENVIADA o FALLIDA |
+|= Regla |= Garantía |
+| Persistencia | Notificación y outbox atómicos |
+| Entrega | Al menos una vez con controles anti-duplicado |
+| Redis | Solo infraestructura operativa BullMQ |
 endlegend
 
 @enduml

@@ -1,0 +1,79 @@
+@startuml notificaciones-08-lld-entrega-asincrona
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 65
+skinparam sequence {
+    ArrowColor #1168BD
+    LifeLineBorderColor #1168BD
+    ParticipantBorderColor #003865
+    ParticipantBackgroundColor #003865
+    ParticipantFontColor #FFFFFF
+}
+
+title LLD - Publicación outbox y entrega asíncrona
+
+participant "Outbox\nPublisher" as publisher
+database "PostgreSQL\nfuente de verdad" as db
+participant "Notification\nQueue" as queue
+queue "BullMQ\nsobre Redis" as redis
+participant "Notification Worker\n+ Processor" as worker
+participant "EmailSender /\nSmsSender" as sender
+participant "Proveedor\nexterno" as provider
+
+== Publicar evento outbox ==
+publisher -> db : BEGIN; SELECT siguiente pendiente\nFOR UPDATE SKIP LOCKED
+alt no hay evento disponible
+    db --> publisher : vacío; COMMIT
+else evento disponible
+    db --> publisher : id, notificationId, publishAttempts
+    publisher -> queue : enqueueOutboxEvent(event)
+    queue -> redis : add deliver-notification\njobId = outbox-{id}
+    alt publicación fallida
+        publisher -> db : UPDATE publish_attempts, last_error,\navailable_at con backoff; COMMIT
+    else job creado o deduplicado
+        publisher -> db : UPDATE published_at; COMMIT
+    end
+end
+
+note over queue,redis
+  Job: attempts configurables, backoff exponencial
+  con jitter y limpieza de completados/fallidos.
+end note
+
+== Procesar entrega ==
+redis -> worker : ejecutar job tras limiter por minuto
+worker -> db : pg_advisory_lock(notificationId)\nSELECT notificación JOIN plantilla
+alt notificación inexistente
+    worker --> redis : UnrecoverableError
+else ya ENVIADA
+    worker --> redis : completar { skipped: true }
+else FALLIDA o máximo agotado
+    worker -> db : asegurar estado FALLIDA
+    worker --> redis : UnrecoverableError
+else entrega permitida
+    worker -> worker : renderTemplate(contenido, variables)
+    worker -> sender : enviar(notificationId, destinatario, mensaje)
+    sender -> provider : Gmail SMTP o SMS HTTPS\ncon identificador determinista
+    provider --> sender : aceptación o error
+    alt éxito
+        worker -> db : CTE: incrementar intentos +\nINSERT EXITOSO + estado ENVIADA
+        worker --> redis : job completado
+    else error permanente o último intento
+        worker -> db : CTE: incrementar intentos +\nINSERT FALLIDO + estado FALLIDA
+        worker --> redis : UnrecoverableError
+    else error transitorio
+        worker -> db : CTE: incrementar intentos +\nINSERT FALLIDO + estado ENCOLADA
+        worker --> redis : lanzar error
+        redis -> redis : programar siguiente intento con backoff
+    end
+end
+worker -> db : pg_advisory_unlock(notificationId)
+
+note over db,redis
+  La entrega es al menos una vez. PostgreSQL, jobId estable,
+  advisory lock, estado ENVIADA e IDs hacia el proveedor
+  reducen duplicados sin prometer exactly-once.
+end note
+
+@enduml

@@ -2,6 +2,7 @@
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam sequenceMessageAlign center
+skinparam maxMessageSize 65
 skinparam sequence {
     ArrowColor #1168BD
     LifeLineBorderColor #1168BD
@@ -11,91 +12,77 @@ skinparam sequence {
     ActorBorderColor #003865
 }
 
-title LLD simple - API de Notificaciones
+title LLD - API de notificaciones
 
 actor "Servicio interno" as emisor
-participant "Middleware\nde validación" as validation
-participant "Controlador" as controller
-participant "Servicio de\nNotificaciones" as service
-participant "Repositorios" as repositories
-database "PostgreSQL" as db
-participant "Adaptador de\nRedis Streams" as queueAdapter
-queue "Redis Stream" as redis
+participant "Middleware\nZod" as validation
+participant "Notification\nController" as controller
+participant "Notification\nService" as service
+participant "Repositories" as repositories
+database "PostgreSQL\nfuente de verdad" as db
 
-== Crear y encolar ==
-emisor -> validation : POST /api/v1/notifications\nIdempotency-Key: clave
-validation -> validation : validar header y body con Zod
-alt datos inválidos
-    validation --> emisor : 400 Bad Request
-else datos válidos
-    validation -> controller : create(body)
-    controller -> service : crear
-    service -> repositories : buscar plantilla
+== Crear notificación ==
+emisor -> validation : POST /api/v1/notifications\nIdempotency-Key + body
+validation -> validation : validar header, canal, destinatario,\nplantillaId y variables
+alt request inválido
+    validation --> emisor : 400
+else request válido
+    validation -> controller : create(body, idempotencyKey)
+    controller -> service : createNotificationService(...)
+    service -> repositories : findTemplateById(plantillaId)
     repositories -> db : SELECT plantilla
-    db --> repositories : plantilla o null
-    service -> service : validar canal y variables
-    alt plantilla inexistente
-        service --> controller : error 404
-        controller --> emisor : 404 Not Found
-    else variables incompletas
-        service --> controller : error 400
-        controller --> emisor : 400 Bad Request
-    else solicitud válida
-        service -> repositories : INSERT con idempotency_key UNIQUE
-        repositories -> db : INSERT ... ON CONFLICT DO NOTHING
-        alt solicitud duplicada
-            service -> repositories : obtener notificación existente
-            repositories -> db : SELECT notificación
-            service -> service : comparar payload
-            controller --> emisor : 200 OK o 409 Conflict
-        else solicitud nueva
-            service -> queueAdapter : encolar(notificacionId)
-            queueAdapter -> redis : XADD notifications:dispatch
-            alt Redis no disponible
-                service -> repositories : eliminar notificación nueva
-                repositories -> db : DELETE compensatorio
-                controller --> emisor : 503 Service Unavailable
-            else publicado
-                controller --> emisor : 202 Accepted
+    service -> service : validar canal y claves exactas
+    alt plantilla inexistente o incompatible
+        service --> controller : 404 o 400
+        controller --> emisor : error estandarizado
+    else datos válidos
+        service -> repositories : insertNotification(...)
+        repositories -> db : BEGIN\nINSERT notificacion ON CONFLICT DO NOTHING
+        alt notificación creada
+            repositories -> db : INSERT notification_outbox\nCOMMIT
+            service --> controller : created = true
+            controller --> emisor : 202 ENCOLADA
+        else idempotency_key existente
+            repositories -> db : COMMIT sin cambios\nSELECT por idempotency_key
+            service -> service : comparar payload completo
+            alt mismo payload
+                controller --> emisor : 200 recurso existente
+            else payload distinto
+                controller --> emisor : 409 Conflict
             end
         end
     end
 end
 
-== Consultar  ==
-emisor -> validation : GET /notifications/{id}
-validation -> validation : validar BIGINT positivo sin convertir a Number
-alt id inválido
-    validation --> emisor : 400 Bad Request
-else id válido
-    validation -> controller : getById(id)
-    controller -> service : obtener(id)
-    service -> repositories : buscar notificación
-    repositories -> db : SELECT notificación
-    alt notificación inexistente
-        service --> controller : error 404
-        controller --> emisor : 404 Not Found
-    else notificación existente
-        service -> repositories : buscar historial de intentos
-        repositories -> db : SELECT intentos ORDER BY numero
-        db --> repositories : intentos o lista vacía
-        controller --> emisor : 200 recurso + historialIntentos
-    end
+== Consultar y listar ==
+emisor -> validation : GET /notifications/{id}\no GET /notifications?filtros
+validation -> controller : params/query normalizados
+controller -> service : get(id) o list(filters)
+service -> repositories : consultar notificación + intentos\no página filtrada
+repositories -> db : SELECT parametrizado
+alt id inexistente
+    controller --> emisor : 404
+else consulta válida
+    controller --> emisor : 200 recurso o página
 end
 
-== Reintentar  ==
+== Reintento manual ==
 emisor -> validation : POST /notifications/{id}/retry
-validation -> controller : retry(id)
-controller -> service : reintentar(id)
-service -> repositories : consultar estado e intentos
-service -> service : validar FALLIDA y máximo de intentos
-alt reintento permitido
-    service -> repositories : actualizar estado ENCOLADA
-    service -> queueAdapter : encolar con backoff
-    controller --> emisor : 202 Accepted
-else reintento no permitido
-    controller --> emisor : 404 o 409
+validation -> controller : id BIGINT válido
+controller -> service : retryNotificationService(id)
+service -> repositories : withTransaction + findByIdForUpdate
+repositories -> db : BEGIN; SELECT FOR UPDATE
+alt inexistente
+    repositories -> db : ROLLBACK
+    controller --> emisor : 404
+else estado distinto de FALLIDA o máximo alcanzado
+    repositories -> db : ROLLBACK
+    controller --> emisor : 409
+else permitido
+    service -> service : retryBackoff(intentos)
+    service -> repositories : scheduleNotificationRetry(...)
+    repositories -> db : UPDATE estado ENCOLADA\nINSERT outbox con available_at; COMMIT
+    controller --> emisor : 202 ENCOLADA
 end
-
 
 @enduml

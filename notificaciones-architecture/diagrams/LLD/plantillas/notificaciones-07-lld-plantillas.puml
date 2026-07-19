@@ -2,6 +2,7 @@
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam sequenceMessageAlign center
+skinparam maxMessageSize 65
 skinparam sequence {
     ArrowColor #1168BD
     LifeLineBorderColor #1168BD
@@ -11,57 +12,67 @@ skinparam sequence {
     ActorBorderColor #003865
 }
 
-title LLD - Gestión de Plantillas
+title LLD - Gestión de plantillas
 
 actor "Servicio interno" as emisor
-participant "Middleware\nde validación" as validation
-participant "Controlador" as controller
-participant "Servicio de\nPlantillas" as service
-participant "Repositorio de\nPlantillas" as repository
+participant "Middleware\nZod" as validation
+participant "Template\nController" as controller
+participant "Template\nService" as service
+participant "Template\nRepository" as repository
 database "PostgreSQL" as db
 
 == Crear ==
 emisor -> validation : POST /api/v1/templates
-validation -> validation : validar body con Zod
-alt datos inválidos
-    validation --> emisor : 400 Bad Request
-else datos válidos
-    validation -> controller : create + body
-    controller -> service : crear
-    service -> repository : guardar si nombre y canal son únicos
-    repository -> db : consulata create
-    alt nombre duplicado en el canal
-        controller --> emisor : 409 Conflict
-    else plantilla creada
-        controller --> emisor : 201 Created
+validation -> validation : validar body estricto y\nvariables no repetidas
+alt body inválido
+    validation --> emisor : 400
+else body válido
+    validation -> controller : create(body)
+    controller -> service : createTemplateService(body)
+    service -> repository : insertTemplate(body)
+    repository -> db : INSERT ... ON CONFLICT DO NOTHING
+    alt nombre + canal duplicados
+        controller --> emisor : 409
+    else creada
+        controller --> emisor : 201 + plantilla
     end
 end
 
-== Actualizar  ==
+== Actualizar ==
 emisor -> validation : PUT /api/v1/templates/{id}
+validation -> validation : validar BIGINT y body completo
 validation -> controller : update(id, body)
-controller -> service : actualizar(id, body)
-service -> repository : buscar y guardar cambios
-repository -> db : consulta update
-    alt Error al crear la actualizar la plantilla
-        controller --> emisor : 404 error 
-    else plantilla actualizada
-        controller --> emisor : 201 updated
+controller -> service : updateTemplateService(id, body)
+service -> repository : updateTemplateById(id, body)
+repository -> db : UPDATE si no existe otro nombre + canal
+alt actualizada
+    controller --> emisor : 200 + plantilla
+else sin fila actualizada
+    service -> repository : findTemplateById(id)
+    repository -> db : SELECT plantilla
+    alt no existe
+        controller --> emisor : 404
+    else conflicto de nombre + canal
+        controller --> emisor : 409
     end
+end
 
-
-== Eliminar  ==
+== Eliminar ==
 emisor -> validation : DELETE /api/v1/templates/{id}
-validation -> controller : delete(id)
-controller -> service : eliminar(id)
-service -> repository : buscar y eliminar
-repository -> db : consulta delete
-    alt no se pudo eliminar la plantilla
-        controller --> emisor : 404 error 
-    else plantilla eliminada
-        controller --> emisor : 201 deleted
+validation -> controller : id BIGINT válido
+controller -> service : deleteTemplateService(id)
+service -> repository : deleteTemplateById(id)
+repository -> db : DELETE si no hay notificaciones asociadas
+alt eliminada
+    controller --> emisor : 204 sin body
+else sin fila eliminada
+    service -> repository : findTemplateById(id)
+    repository -> db : SELECT plantilla
+    alt no existe
+        controller --> emisor : 404
+    else tiene notificaciones
+        controller --> emisor : 409
     end
-
-
+end
 
 @enduml

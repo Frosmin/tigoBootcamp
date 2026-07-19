@@ -1,18 +1,16 @@
 @startuml notificaciones-04-bp-reintento
 
-title Proceso de Negocio Reintento de Notificación
+title BP RF-7.4 - Reintento manual
 
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam activity {
     BackgroundColor white
     BorderColor #1676D2
-    FontColor #000000
     DiamondBackgroundColor #FFF2CC
     DiamondBorderColor #C99A00
     StartColor #222222
     EndColor #222222
-    BarColor #1676D2
 }
 skinparam swimlane {
     BorderColor #8AB4E8
@@ -20,68 +18,58 @@ skinparam swimlane {
     TitleFontColor #003B70
 }
 
-|Servicio interno emisor|
+|Servicio interno|
 start
-:Solicitar reintento\nPOST /api/v1/notifications/{id}/retry;
+:POST /api/v1/notifications/{id}/retry;
 
 |API REST|
-:Validar parámetro id;
-
-if (¿Solicitud válida?) then (Sí)
-    :Buscar notificación e intentos\nen PostgreSQL;
-    if (¿Notificación existente?) then (Sí)
-        if (¿Estado actual?) then (FALLIDA)
-            :Evaluar máximo configurable\nde intentos;
-            if (¿Quedan intentos?) then (Sí)
-                :Reservar control de reintento\nen Redis para evitar duplicados;
-                if (¿Ya existe un reintento activo?) then (Sí)
-                    |Servicio interno emisor|
-                    :Recibir HTTP 409;
-                    stop
-                else (No)
-                    |API REST|
-                    :Calcular demora con\nbackoff exponencial;
-                    :Actualizar notificación\nestado = ENCOLADA;
-                    :Publicar trabajo diferido\nen Redis;
-                    
-                    |Servicio interno emisor|
-                    :Recibir HTTP 202 Accepted\ncon id y estado ENCOLADA;
-                    stop
-                endif
-            else (No)
-                :Rechazar por máximo\nde intentos alcanzado;
-                |Servicio interno emisor|
-                :Recibir HTTP 409;
-                stop
-            endif
-        elseif (¿Estado actual?) then (ENVIADA)
-            :Bloquear reenvío de una\nnotificación entregada;
-            |Servicio interno emisor|
-            :Recibir HTTP 409;
-            stop
-        else (ENCOLADA)
-            :Rechazar porque existe\nun envío pendiente;
-            |Servicio interno emisor|
-            :Recibir HTTP 409;
-            stop
-        endif
-    else (No)
-        :Preparar error NOTIFICATION_NOT_FOUND;
-        |Servicio interno emisor|
-        :Recibir HTTP 404;
-        stop
-    endif
-else (No)
-    |Servicio interno emisor|
-    :Recibir HTTP 400;
+:Validar BIGINT positivo;
+if (¿Id válido?) then (No)
+    :Responder 400;
     stop
 endif
 
-legend right
-|= RF-7.4 |= Regla |
-| Estado permitido | FALLIDA |
-| Estados rechazados | ENVIADA, ENCOLADA |
-| Límite | Máximo configurable de intentos |
-endlegend
+|PostgreSQL - fuente de verdad|
+:BEGIN y SELECT FOR UPDATE;
+if (¿Notificación existente?) then (No)
+    :ROLLBACK;
+    |API REST|
+    :Responder 404;
+    stop
+endif
+if (¿Estado FALLIDA?) then (No)
+    :ROLLBACK;
+    |API REST|
+    :Responder 409;
+    stop
+endif
+if (¿Quedan intentos?) then (No)
+    :ROLLBACK;
+    |API REST|
+    :Responder 409;
+    stop
+endif
+:Calcular backoff desde intentos acumulados;
+:Actualizar estado ENCOLADA;
+:Insertar outbox con available_at diferido;
+:COMMIT estado + outbox;
+
+|API REST|
+:Responder 202 Accepted;
+
+|Procesamiento asíncrono|
+:Outbox Publisher publica cuando\nvence available_at;
+if (¿Redis disponible?) then (No)
+    :Mantener outbox pendiente y\nreintentar publicación con backoff;
+else (Sí)
+    :Crear nuevo job BullMQ estable;
+endif
+stop
+
+note right
+  El bloqueo de fila serializa solicitudes
+  concurrentes. La segunda observa ENCOLADA
+  y recibe 409; Redis no guarda este control.
+end note
 
 @enduml

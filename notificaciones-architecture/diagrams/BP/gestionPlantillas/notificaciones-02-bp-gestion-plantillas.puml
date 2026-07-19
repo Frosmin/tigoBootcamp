@@ -1,18 +1,16 @@
 @startuml notificaciones-02-bp-gestion-plantillas
 
-title Gestión de Plantillas
+title BP RF-7.2 - Gestión de plantillas
 
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam activity {
     BackgroundColor white
     BorderColor #1676D2
-    FontColor #000000
     DiamondBackgroundColor #FFF2CC
     DiamondBorderColor #C99A00
     StartColor #222222
     EndColor #222222
-    BarColor #1676D2
 }
 skinparam swimlane {
     BorderColor #8AB4E8
@@ -22,95 +20,38 @@ skinparam swimlane {
 
 |Servicio interno|
 start
-:Seleccionar operación\ncrear, actualizar o eliminar;
+:Solicitar crear, actualizar\no eliminar plantilla;
 
-if (¿Operación?) then (Crear)
-    :Enviar nombre, canal, contenido\ny variables[]\nPOST /api/v1/templates;
-    |API REST|
-    :Validar datos con Zod;
-    if (¿Datos válidos?) then (Sí)
-        :Buscar nombre y canal\nen PostgreSQL;
-        if (¿Nombre único por canal?) then (Sí)
-            :Persistir nueva plantilla;
-            |Servicio interno|
-            :Recibir HTTP 201\ny plantilla creada;
-            stop
-        else (No)
-            :Rechazar nombre duplicado;
-            |Servicio interno|
-            :Recibir HTTP 409;
-            stop
-        endif
-    else (No)
-        :Rechazar datos inválidos;
-        |Servicio interno|
-        :Recibir HTTP 400;
-        stop
-    endif
-
-elseif (¿Operación?) then (Actualizar)
-    :Enviar cambios\nPUT /api/v1/templates/{id};
-    |API REST|
-    :Validar id y datos con Zod;
-    if (¿Solicitud válida?) then (Sí)
-        :Buscar plantilla por id\nen PostgreSQL;
-        if (¿Plantilla existente?) then (Sí)
-            :Comprobar nombre único por canal\nexcluyendo la plantilla actual;
-            if (¿Existe otro nombre igual\nen el canal?) then (Sí)
-                :Rechazar nombre duplicado;
-                |Servicio interno|
-                :Recibir HTTP 409;
-                stop
-            else (No)
-                :Persistir cambios;
-                |Servicio interno|
-                :Recibir HTTP 200\ny plantilla actualizada;
-                stop
-            endif
-        else (No)
-            :Rechazar plantilla inexistente;
-            |Servicio interno|
-            :Recibir HTTP 404;
-            stop
-        endif
-    else (No)
-        :Rechazar datos inválidos;
-        |Servicio interno|
-        :Recibir HTTP 400;
-        stop
-    endif
-
-else (Eliminar)
-    :Solicitar eliminación\nDELETE /api/v1/templates/{id};
-    |API REST|
-    :Validar parámetro id;
-    if (¿Id válido?) then (Sí)
-        :Buscar plantilla por id\nen PostgreSQL;
-        if (¿Plantilla existente?) then (Sí)
-            :Eliminar plantilla\nsegún la política del dominio;
-    
-            |Servicio interno|
-            :Recibir HTTP 204;
-            stop
-        else (No)
-            :Rechazar plantilla inexistente;
-            |Servicio interno|
-            :Recibir HTTP 404;
-            stop
-        endif
-    else (No)
-        :Rechazar id inválido;
-        |Servicio interno|
-        :Recibir HTTP 400;
-        stop
-    endif
+|API REST|
+:Identificar operación y validar\nid, body y variables con Zod;
+if (¿Request válido?) then (No)
+    :Responder 400;
+    stop
 endif
 
+|PostgreSQL - fuente de verdad|
+:Ejecutar operación con sus reglas\nde existencia e integridad;
+note right
+  POST: nombre + canal únicos.
+  PUT: id existente y sin duplicar nombre + canal.
+  DELETE: id existente y sin notificaciones asociadas.
+end note
+
+|API REST|
+if (¿Resultado?) then (Correcto)
+    :Responder 201 al crear,\n200 al actualizar o 204 al eliminar;
+elseif (¿Resultado?) then (No existe)
+    :Responder 404;
+else (Conflicto)
+    :Responder 409 por duplicado\no plantilla asociada;
+endif
+stop
+
 legend right
-|= RF-7.2 |= Endpoint |
-| Crear | POST /api/v1/templates |
-| Actualizar | PUT /api/v1/templates/{id} |
-| Eliminar | DELETE /api/v1/templates/{id} |
+|= Método |= Regla principal |= Éxito |
+| POST | Nombre único por canal | 201 |
+| PUT | Existe y no duplica | 200 |
+| DELETE | Sin notificaciones asociadas | 204 |
 endlegend
 
 @enduml

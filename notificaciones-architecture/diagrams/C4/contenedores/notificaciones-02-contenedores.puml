@@ -6,24 +6,24 @@ LAYOUT_LEFT_RIGHT()
 
 title Diagrama de Contenedores (C2) - Notificaciones
 
-Person(emisores, "Emisores", "Servicios internos.")
-System_Ext(proveedor, "Proveedor de email y SMS", "Servicio genérico de terceros que entrega mensajes por email y SMS.")
+Person(emisores, "Servicios internos", "Consumidores previamente autenticados.")
+System_Ext(gmail, "Gmail SMTP", "Entrega mensajes de correo.")
+System_Ext(sms, "Proveedor SMS genérico", "Entrega mensajes SMS mediante HTTP.")
 
 System_Boundary(p07, "Microservicio P07 Notificaciones") {
-    Container(api, "API REST", "Node.js / ultimate-express / Zod", "Expone api para crear y consultar notificaciones, reintentar fallos y administrar plantillas.")
-    Container(worker, "Worker de envíos", "Node.js 22", "Consume trabajos pendientes, renderiza plantillas, controla el throughput, realiza envíos y programa reintentos con backoff exponencial.")
-    ContainerDb(db, "Base de datos", "PostgreSQL", "Persiste plantillas, notificaciones, claves de idempotencia, estados e intentos de entrega.")
-    ContainerDb(redis, "Cola y coordinación", "Redis Streams", "Mantiene la cola, trabajos diferidos y contadores de throughput.")
+    Container(api, "API REST", "Node.js / ultimate-express / Zod", "Valida solicitudes, gestiona plantillas y guarda notificación más evento outbox en una transacción PostgreSQL.")
+    Container(worker, "Worker y Outbox Publisher", "Node.js / BullMQ", "Publica eventos outbox, procesa entregas, registra intentos y aplica reintentos y throughput configurables.")
+    ContainerDb(db, "Fuente de verdad", "PostgreSQL", "Plantillas, notificaciones, idempotencia, estados, intentos y eventos transactional outbox.")
+    ContainerQueue(redis, "BullMQ", "Redis", "Mantiene jobs y metadatos operativos: demoras, reintentos y rate limiting. No guarda estado de negocio.")
 }
 
-Rel(emisores, api, "Envía, consulta, reintenta, lista y gestiona plantillas", "HTTPS / REST / JSON")
-Rel(api, db, "Lee y persiste plantillas, notificaciones e intentos", "SQL")
-Rel(api, redis, "Publica envíos mediante XADD", "RESP")
+Rel(emisores, api, "Gestiona plantillas y notificaciones", "HTTPS / REST / JSON")
+Rel(api, db, "Lee y persiste en transacciones", "SQL")
 
-Rel(worker, redis, "Consume trabajos y aplica backoff, idempotencia y límite por minuto", "RESP")
-Rel(worker, db, "Lee plantillas y actualiza estados e intentos", "SQL")
-Rel(worker, proveedor, "Envía email o SMS mediante un conector genérico", "Librería sms y email / HTTPS")
-Rel(proveedor, worker, "Devuelve éxito o fallo", "Respuesta API")
+Rel(worker, db, "Reclama outbox; consulta y actualiza estados e intentos", "SQL")
+Rel(worker, redis, "Publica y consume jobs BullMQ", "RESP")
+Rel(worker, gmail, "Envía EMAIL", "SMTP")
+Rel(worker, sms, "Envía SMS", "HTTPS / JSON")
 
 SHOW_LEGEND()
 @enduml

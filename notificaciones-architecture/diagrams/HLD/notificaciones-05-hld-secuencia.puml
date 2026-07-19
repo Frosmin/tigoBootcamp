@@ -2,6 +2,7 @@
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam sequenceMessageAlign center
+skinparam maxMessageSize 70
 skinparam sequence {
     ArrowColor #1168BD
     LifeLineBorderColor #1168BD
@@ -11,70 +12,78 @@ skinparam sequence {
     ActorBorderColor #003865
 }
 
-title HLD simple - Flujo de notificaciones
+title HLD - Notificaciones con transactional outbox y BullMQ
 
-actor "Servicio interno\n(autenticado previamente)" as emisor
+actor "Servicio interno\n(previamente autenticado)" as emisor
 participant "API REST" as api
-database "PostgreSQL" as db
-queue "Redis" as redis
-participant "Worker de envíos" as worker
-participant "Proveedor genérico\nde email/SMS" as proveedor
+database "PostgreSQL\nfuente de verdad" as db
+participant "Outbox\nPublisher" as publisher
+queue "BullMQ\nsobre Redis" as bull
+participant "Worker\nde entregas" as worker
+participant "Proveedor\npor canal" as provider
 
-== Solicitud ==
-emisor -> api : POST /api/v1/notifications\nHeader Idempotency-Key
-api -> api : validar header, datos, plantilla y variables
-
-alt solicitud inválida
+== Aceptación durable ==
+emisor -> api : POST /api/v1/notifications\nIdempotency-Key
+api -> api : validar request, plantilla y variables
+alt request inválido
     api --> emisor : 400 o 404
-else solicitud válida
-    api -> db : INSERT ENCOLADA con clave única
-    alt solicitud duplicada
-        api -> db : consultar y comparar payload
+else request válido
+    api -> db : BEGIN; INSERT notificación ENCOLADA\nON CONFLICT DO NOTHING
+    alt idempotency_key existente
+        api -> db : COMMIT sin cambios; consultar y comparar payload
         api --> emisor : 200 existente o 409 conflicto
-    else solicitud nueva
-        api -> redis : XADD notifications:dispatch
-        alt Redis no disponible
-            api -> db : DELETE compensatorio
-            api --> emisor : 503 Service Unavailable
-        else publicada
-            api --> emisor : 202 Accepted
-        end
+    else notificación nueva
+        api -> db : INSERT notification_outbox; COMMIT
+        api --> emisor : 202 Accepted
+        note right of api
+          La respuesta no espera a Redis.
+          El outbox ya quedó confirmado.
+        end note
     end
 end
 
-== Entrega asíncrona ==
-redis -> worker : notificacionId
-worker -> db : obtener notificación y plantilla
-worker -> worker : controlar duplicados, throughput y renderizado
-worker -> proveedor : enviar mediante librería 
-proveedor --> worker : éxito o fallo
-
-alt envío exitoso
-    worker -> db : registrar intento y estado ENVIADA
-else fallo reintentable
-    worker -> db : registrar intento fallido
-    worker -> redis : programar reintento con backoff
-else fallo terminal
-    worker -> db : registrar intento y estado FALLIDA
+== Publicación recuperable ==
+publisher -> db : reclamar evento pendiente\nFOR UPDATE SKIP LOCKED
+publisher -> bull : add deliver-notification\njobId = outbox-{id}
+alt Redis no disponible
+    publisher -> db : incrementar publish_attempts y\nreprogramar available_at con backoff
+else job creado o ya existente
+    publisher -> db : marcar published_at
 end
 
-== Consulta o reintento manual ==
-emisor -> api : GET estado/historial o POST /{id}/retry
-api -> db : consultar estado e intentos
-api -> redis : programar reintento si corresponde
-api --> emisor : 200, 202, 400, 404 o 409
-
-
-
-== plantillas ==
-emisor -> api : POST, PUT, DELETE /api/v1/platilla
-api -> api : validar valores validos
-
-    alt solicitud inválida
-        api --> emisor : 400 o 404 datos no permitidos
-    else solicitud válida
-        api -> db : crea, edita o elimina 
-        api --> emisor : 202 
+== Entrega y reintentos automáticos ==
+bull -> worker : job disponible tras rate limiter
+worker -> db : advisory lock + consultar\nnotificación y plantilla
+alt estado ENVIADA
+    worker --> bull : completar como omitido
+else entrega pendiente
+    worker -> provider : enviar por SMTP o HTTPS
+    provider --> worker : éxito o error
+    alt éxito
+        worker -> db : INSERT intento EXITOSO + estado ENVIADA
+    else error transitorio y quedan intentos
+        worker -> db : INSERT intento FALLIDO + estado ENCOLADA
+        worker --> bull : lanzar error
+        bull -> bull : reintentar con backoff exponencial
+    else error permanente o máximo alcanzado
+        worker -> db : INSERT intento FALLIDO + estado FALLIDA
+        worker --> bull : UnrecoverableError
     end
+end
+worker -> db : liberar advisory lock
+
+== Reintento manual ==
+emisor -> api : POST /api/v1/notifications/{id}/retry
+api -> db : BEGIN; SELECT FOR UPDATE; validar FALLIDA\nUPDATE ENCOLADA; INSERT outbox diferido; COMMIT
+alt permitido
+    api --> emisor : 202 Accepted
+else inexistente o no permitido
+    api --> emisor : 404 o 409
+end
+
+note over db,bull
+  PostgreSQL conserva el estado de negocio.
+  Redis conserva solo jobs y metadatos operativos de BullMQ.
+end note
 
 @enduml
