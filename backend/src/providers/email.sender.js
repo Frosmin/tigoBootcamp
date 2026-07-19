@@ -24,7 +24,9 @@ export const createEmailSender = ({
 } = {}) => {
   const sendTransport = transporter || (smtpUser && smtpAppPassword
     ? nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: { user: smtpUser, pass: smtpAppPassword },
       connectionTimeout: config.PROVIDER_TIMEOUT_MS,
       greetingTimeout: config.PROVIDER_TIMEOUT_MS,

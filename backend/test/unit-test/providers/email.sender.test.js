@@ -32,7 +32,9 @@ describe('email.sender.js', () => {
     const send = createEmailSender(credentials);
     await send({ notificationId: '10' });
     expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: { user: 'bot@gmail.com', pass: 'app-password' },
       connectionTimeout: expect.any(Number),
       socketTimeout: expect.any(Number)
