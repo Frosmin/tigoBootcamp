@@ -375,13 +375,6 @@ cd backend
 npm install
 ```
 
-El acceso a las dependencias `@tigo/*` puede requerir el registry interno.
-
-### 2. Configurar el entorno
-
-```bash
-cp .env.example .env
-```
 
 Completar las credenciales de PostgreSQL, Redis y al menos el proveedor que se
 quiera probar.
@@ -464,6 +457,8 @@ Redis se inicia con AOF y `maxmemory-policy noeviction`. PostgreSQL ejecuta
 | `npm test` | Ejecuta pruebas unitarias y de contrato |
 | `npm run coverage` | Ejecuta cobertura V8 con umbral de 85% |
 | `npm run test:performance` | Ejecuta K6 y guarda el resumen en `docs/evidencias/k6/summary.json` |
+| `npm run test:performance:email` | Ejecuta K6 para EMAIL y guarda `summary-email.json` |
+| `npm run test:performance:sms` | Ejecuta K6 para SMS y guarda `summary-sms.json` |
 | `npm run test:smoke` | Ejecuta el flujo smoke de entrega |
 | `npm run test:twilio` | Envia un SMS real usando las credenciales de `.env` |
 | `npm run sonar` | Ejecuta el analisis Sonar |
@@ -482,12 +477,13 @@ El umbral configurado es `85%` para lineas, funciones, ramas y statements. La
 suite tambien valida el contrato OpenAPI 3.1 y su cobertura de rutas.
 
 La prueba K6 valida `p95 < 500 ms`, tasa de errores menor al `1%` y throughput
-configurable. Requiere una plantilla EMAIL con las variables `nombre` y
-`pedido`; su identificador se pasa mediante `TEMPLATE_ID`:
+configurable. Requiere una plantilla EMAIL o SMS con las variables `nombre` y
+`pedido`; su identificador y canal se pasan mediante `TEMPLATE_ID` y `CHANNEL`:
 
 ```powershell
 $env:BASE_URL = "http://localhost:3050"
 $env:TEMPLATE_ID = "1"
+$env:CHANNEL = "EMAIL"
 $env:RATE = "10"
 $env:DURATION = "1m"
 npm run test:performance

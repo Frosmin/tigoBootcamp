@@ -115,16 +115,13 @@
 
 
 
-FROM node:22-alpine3.22
+FROM node:22.22.1-bookworm-slim
 
 ENV TZ=America/La_Paz
 ENV APP_HOME=/app
 ENV NODE_ENV=production
 
 WORKDIR $APP_HOME
-
-
-RUN apk upgrade --no-cache
 
 
 COPY package*.json ./
@@ -139,8 +136,8 @@ COPY dev ./dev
 
 
 RUN npm prune --omit=dev --offline --ignore-scripts \
-    && addgroup -S app-group \
-    && adduser -S -G app-group -h $APP_HOME -s /sbin/nologin usr-app \
+    && addgroup --system app-group \
+    && adduser --system --ingroup app-group --home $APP_HOME --shell /usr/sbin/nologin usr-app \
     && rm -rf /usr/local/lib/node_modules/npm \
         /usr/local/bin/npm \
         /usr/local/bin/npx \
