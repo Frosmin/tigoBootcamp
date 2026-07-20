@@ -428,6 +428,15 @@ El servicio queda disponible en:
 - Metricas: `http://localhost:3050/metrics`
 
 Para incluir el simulador SMS:
+```bash
+npm run 
+```
+
+para solo levantar el servidor mock
+```bash
+npm run dev:sms-mock
+```
+
 
 ```bash
 docker compose --profile development up --build

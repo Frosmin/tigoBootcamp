@@ -50,6 +50,10 @@ npm run test:performance:email
 ```
 
 
+
+para levantar el servidor mock 
+npm run dev:sms-mock
+
 Para sms
 
 ```powershell
@@ -82,6 +86,20 @@ $env:PRE_ALLOCATED_VUS = "20"
 $env:MAX_VUS = "100"
 npm run test:performance:sms
 ```
+
+
+
+para bash 
+export BASE_URL="http://localhost:3050"
+export TEMPLATE_ID="1"
+export CHANNEL="SMS"
+export DESTINATION="+59170000000"
+export RATE="10"
+export DURATION="1m"
+export PRE_ALLOCATED_VUS="20"
+export MAX_VUS="100"
+
+npm run test:performance:sms
 
 `RATE` representa solicitudes por segundo. Los reportes se guardan como
 `docs/evidencias/k6/summary-email.json` y `summary-sms.json`. K6 termina con un
