@@ -526,3 +526,6 @@ npm run test:twilio
   instrumentacion OpenTelemetry.
 - `SIGINT` y `SIGTERM` realizan un apagado ordenado de API, worker, BullMQ,
   Redis y PostgreSQL.
+
+
+-..
