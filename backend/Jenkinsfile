@@ -1,0 +1,38 @@
+pipeline {
+  agent any
+
+  tools {
+    // Debe coincidir con el nombre configurado en Manage Jenkins > Tools.
+    nodejs 'NodeJS-22'
+  }
+
+  options {
+    timestamps()
+  }
+
+  stages {
+    stage('Dependencias (build)') {
+      steps {
+        sh 'npm ci'
+      }
+    }
+
+    stage('Pruebas y cobertura') {
+      steps {
+        sh 'npm run coverage'
+      }
+    }
+
+    stage('Análisis SonarQube') {
+      steps {
+        sh 'npm run sonar'
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'coverage/lcov.info', allowEmptyArchive: true
+    }
+  }
+}

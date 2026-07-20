@@ -1,0 +1,1 @@
+docker compose -f .\jenkins\docker-compose.yml exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
